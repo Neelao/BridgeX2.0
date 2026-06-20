@@ -2,6 +2,8 @@ import type {
   ClientProfile,
   Interview,
   Note,
+  Opportunity,
+  Referral,
   Reminder,
   Resume,
   Session,
@@ -25,8 +27,10 @@ const KEYS = {
   reminders: "bx_reminders",
   notes: "bx_notes",
   resumes: "bx_resumes",
+  opportunities: "bx_opportunities",
+  referrals: "bx_referrals",
   currentUser: "bx_current_user",
-  seeded: "bx_seeded_v2",
+  seeded: "bx_seeded_v4",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -192,6 +196,35 @@ export const Resumes = {
     Resumes.save(rows);
     return resume;
   },
+};
+
+/* ---------------- Employer opportunities (shared catalog) ---------------- */
+export const Opportunities = {
+  all: () => read<Opportunity[]>(KEYS.opportunities, []),
+  save: (rows: Opportunity[]) => write(KEYS.opportunities, rows),
+  byId: (id: string) => Opportunities.all().find((o) => o.id === id),
+};
+
+/* ---------------- Referrals ---------------- */
+export const Referrals = {
+  all: () => read<Referral[]>(KEYS.referrals, []),
+  save: (rows: Referral[]) => write(KEYS.referrals, rows),
+  forAdvisor: (advisorId: string) =>
+    Referrals.all()
+      .filter((r) => r.advisorId === advisorId)
+      .sort((a, b) => b.at - a.at),
+  forClient: (clientId: string) =>
+    Referrals.all()
+      .filter((r) => r.clientId === clientId)
+      .sort((a, b) => b.at - a.at),
+  forOpportunity: (opportunityId: string) => Referrals.all().filter((r) => r.opportunityId === opportunityId),
+  upsert: (referral: Referral) => {
+    const rows = Referrals.all().filter((r) => r.id !== referral.id);
+    rows.push(referral);
+    Referrals.save(rows);
+    return referral;
+  },
+  remove: (id: string) => Referrals.save(Referrals.all().filter((r) => r.id !== id)),
 };
 
 export { KEYS };

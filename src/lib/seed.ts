@@ -3,14 +3,16 @@ import {
   Companies,
   Interviews,
   Notes,
+  Opportunities,
   Profiles,
+  Referrals,
   Reminders,
   Sessions,
   Users,
   KEYS,
   uid,
 } from "./db";
-import type { ChatMessage, Interview, TargetCompany, User } from "./types";
+import type { ChatMessage, Interview, Opportunity, TargetCompany, User } from "./types";
 
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
@@ -18,6 +20,14 @@ const HOUR = 60 * 60 * 1000;
 /** Seed a realistic demo dataset the first time the app runs in a browser. */
 export function ensureSeeded() {
   if (localStorage.getItem(KEYS.seeded)) return;
+
+  // Start from a clean slate so re-seeding a newer demo version can't duplicate
+  // data left by an older one.
+  [
+    KEYS.users, KEYS.profiles, KEYS.companies, KEYS.interviews, KEYS.sessions,
+    KEYS.reminders, KEYS.notes, KEYS.resumes, KEYS.opportunities, KEYS.referrals,
+    KEYS.currentUser,
+  ].forEach((k) => localStorage.removeItem(k));
 
   const now = Date.now();
 
@@ -221,18 +231,30 @@ export function ensureSeeded() {
     source: "manual",
   });
 
-  // Contact recency — drives the "needs attention" feed (some fresh, some stale).
-  Users.update("cli_amir", { lastContactAt: now - 1 * DAY });
-  Users.update("cli_sam", { lastContactAt: now - 9 * DAY });
+  // Contact recency + advisor readiness approval.
+  Users.update("cli_amir", { lastContactAt: now - 1 * DAY, readinessStatus: "employer_ready", careerInterests: "Fintech product teams" });
+  Users.update("cli_sam", { lastContactAt: now - 9 * DAY, readinessStatus: "coaching", careerInterests: "Data / analytics, open to ML" });
+  Users.update("cli_lena", { readinessStatus: "not_ready", careerInterests: "Consumer product marketing" });
   // Lena left without a logged contact → surfaces as needing a check-in.
 
-  // A couple of coaching notes so the timeline isn't empty.
+  // Coaching notes + one piece of feedback shared with the client.
   Notes.add({
     id: uid("note"),
     advisorId: advisor.id,
     clientId: "cli_amir",
     text: "Strong mock — focus next session on accessibility and GraphQL gaps for Monzo.",
     at: now - 1 * DAY,
+    kind: "interview",
+    shared: false,
+  });
+  Notes.add({
+    id: uid("note"),
+    advisorId: advisor.id,
+    clientId: "cli_amir",
+    text: "Great work — you're employer-ready. Lead your resume with the 35% load-time win and the jQuery→React migration.",
+    at: now - 1 * DAY,
+    kind: "resume",
+    shared: true,
   });
   Notes.add({
     id: uid("note"),
@@ -240,7 +262,140 @@ export function ensureSeeded() {
     clientId: "cli_sam",
     text: "Confident on SQL/dashboards. Build out ML talking points before next round.",
     at: now - 9 * DAY,
+    kind: "coaching",
+    shared: false,
+  });
+
+  // Employer opportunities (shared catalog) + a few example referrals.
+  Opportunities.save(OPPORTUNITIES);
+  Referrals.upsert({
+    id: uid("ref"),
+    advisorId: advisor.id,
+    clientId: "cli_amir",
+    opportunityId: "opp_monzo",
+    status: "interviewing",
+    note: "Strong React/TS fit, interview-ready.",
+    at: now - 3 * DAY,
+  });
+  Referrals.upsert({
+    id: uid("ref"),
+    advisorId: advisor.id,
+    clientId: "cli_amir",
+    opportunityId: "opp_stripe",
+    status: "sent",
+    at: now - 12 * HOUR,
+  });
+  Referrals.upsert({
+    id: uid("ref"),
+    advisorId: advisor.id,
+    clientId: "cli_sam",
+    opportunityId: "opp_internship",
+    status: "placed",
+    note: "Placed for the summer data internship.",
+    at: now - 6 * DAY,
   });
 
   localStorage.setItem(KEYS.seeded, "1");
 }
+
+const OPPORTUNITIES: Opportunity[] = [
+  {
+    id: "opp_monzo",
+    kind: "company",
+    org: "Monzo",
+    role: "Frontend Engineer",
+    location: "London / Remote",
+    skills: ["react", "typescript", "rest", "testing", "accessibility"],
+    description: "Product-focused frontend role building accessible, responsive web apps with React and TypeScript.",
+  },
+  {
+    id: "opp_spotify",
+    kind: "company",
+    org: "Spotify",
+    role: "Product Marketing Manager",
+    location: "Berlin",
+    skills: ["marketing", "analytics", "communication", "seo", "stakeholder"],
+    description: "Own positioning and go-to-market for a subscription product. Strong analytics and storytelling.",
+  },
+  {
+    id: "opp_andela",
+    kind: "recruiter",
+    org: "Andela Talent Network",
+    role: "Data Analyst",
+    location: "Remote (Global)",
+    skills: ["sql", "python", "tableau", "analytics", "communication"],
+    description: "Recruiter network placing analysts with global teams. SQL + dashboarding + stakeholder comms.",
+  },
+  {
+    id: "opp_gradscheme",
+    kind: "grad",
+    org: "Catalyst Graduate Scheme",
+    role: "Graduate Software Engineer",
+    location: "Manchester",
+    skills: ["javascript", "react", "java", "testing"],
+    description: "12-month rotational graduate programme for early-career engineers across web and backend teams.",
+  },
+  {
+    id: "opp_internship",
+    kind: "internship",
+    org: "Northwind Labs",
+    role: "Data Internship",
+    location: "Remote",
+    skills: ["python", "sql", "data", "analytics"],
+    description: "Paid 3-month data internship — dashboards, analysis, and exposure to ML basics.",
+  },
+  {
+    id: "opp_stripe",
+    kind: "company",
+    org: "Stripe",
+    role: "Full-stack Engineer",
+    location: "Dublin / Remote",
+    skills: ["react", "typescript", "node", "api", "sql"],
+    description: "Build payments products end to end. Comfortable across a modern web stack and APIs.",
+  },
+  {
+    id: "opp_figma",
+    kind: "company",
+    org: "Figma",
+    role: "Product Designer",
+    location: "London",
+    skills: ["figma", "ux", "design", "product", "communication"],
+    description: "Own design for a core surface. Strong systems thinking and cross-functional collaboration.",
+  },
+  {
+    id: "opp_hays",
+    kind: "recruiter",
+    org: "Hays Technology",
+    role: "Frontend Developer (multiple clients)",
+    location: "UK-wide",
+    skills: ["react", "javascript", "typescript", "css"],
+    description: "Agency recruiter with a pipeline of frontend roles across fintech and e-commerce clients.",
+  },
+  {
+    id: "opp_deloitte_grad",
+    kind: "grad",
+    org: "Deloitte Digital",
+    role: "Graduate Analyst",
+    location: "London / Manchester",
+    skills: ["analytics", "communication", "sql", "stakeholder"],
+    description: "Graduate consulting scheme — data-driven client work with structured training and mentorship.",
+  },
+  {
+    id: "opp_meta_intern",
+    kind: "internship",
+    org: "Meta",
+    role: "Software Engineer Intern",
+    location: "London",
+    skills: ["python", "java", "react", "testing"],
+    description: "12-week summer internship on a product team, with a dedicated mentor and intern project.",
+  },
+  {
+    id: "opp_google_grad",
+    kind: "grad",
+    org: "Google",
+    role: "Associate Product Marketing Manager",
+    location: "Dublin",
+    skills: ["marketing", "analytics", "communication", "seo"],
+    description: "Rotational APMM programme for early-career marketers with strong analytical instincts.",
+  },
+];
