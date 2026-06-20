@@ -39,9 +39,9 @@ export default function Landing() {
         <section className="grid items-center gap-12 py-16 lg:grid-cols-[1.1fr_1fr] lg:py-24">
           <div>
             <h1 className="text-[44px] font-semibold leading-[1.05] tracking-tight text-ink-900 sm:text-[56px]">
-              Make job seekers
+              Your expertise,
               <br />
-              <span className="text-steel-500">interview-ready</span>, faster.
+              their <span className="text-steel-500">future</span>.
             </h1>
             <p className="mt-6 max-w-lg text-[17px] leading-relaxed text-ink-600">
               Candidates run AI mock interviews analysed against their CV. Advisors get instant
@@ -114,41 +114,20 @@ export default function Landing() {
         {/* About the firm */}
         <section className="py-14 lg:py-16">
           <div className="rounded-3xl border border-line bg-surface p-8 shadow-[0_1px_2px_rgba(20,22,30,0.04)] sm:p-12">
-            <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-center">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-steel-600">About BridgeX</p>
-                <h2 className="mt-3 text-[26px] font-semibold tracking-tight text-ink-900 sm:text-[30px]">
-                  AI-powered career advisory, built for the people doing the coaching.
-                </h2>
-                <p className="mt-4 text-[15px] leading-relaxed text-ink-600">
-                  BridgeX 2.0 helps career advisors, bootcamps and employment programmes move more
-                  job seekers into work. Candidates complete mock interviews analysed by AI against
-                  their CV and target role; advisors get instant readiness summaries, an
-                  approval-gated pipeline, and an employer referral portal — all in one place.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm text-ink-700">
-                  <span className="flex items-center gap-2"><Icon name="check" size={15} className="text-sage-600" strokeWidth={2.2} /> Two tailored interfaces</span>
-                  <span className="flex items-center gap-2"><Icon name="check" size={15} className="text-sage-600" strokeWidth={2.2} /> Advisor-controlled access</span>
-                  <span className="flex items-center gap-2"><Icon name="check" size={15} className="text-sage-600" strokeWidth={2.2} /> Employer referral matching</span>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-line bg-paper-2 p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Try the demo</p>
-                <div className="mt-3 space-y-2.5 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted">Advisor</span>
-                    <code className="text-[13px] text-ink-800">advisor@bridgex.io · advisor123</code>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted">Client</span>
-                    <code className="text-[13px] text-ink-800">amir@demo.io · client123</code>
-                  </div>
-                </div>
-                <Link to="/advisor/sign-in">
-                  <Button size="md" icon="arrowRight" className="mt-5 w-full">Enter advisor workspace</Button>
-                </Link>
-              </div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-steel-600">About BridgeX</p>
+            <h2 className="mt-3 max-w-3xl text-[26px] font-semibold leading-tight tracking-tight text-ink-900 sm:text-[32px]">
+              AI-powered career advisory, built for the people doing the coaching.
+            </h2>
+            <p className="mt-5 max-w-3xl text-[16px] leading-relaxed text-ink-600">
+              BridgeX 2.0 helps career advisors, bootcamps and employment programmes move more job
+              seekers into work. Candidates complete mock interviews analysed by AI against their CV
+              and target role; advisors get instant readiness summaries, an approval-gated pipeline,
+              and an employer referral portal — all in one place.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-x-10 gap-y-3 text-sm font-medium text-ink-700">
+              <span className="flex items-center gap-2"><Icon name="check" size={16} className="text-sage-600" strokeWidth={2.2} /> Two tailored interfaces</span>
+              <span className="flex items-center gap-2"><Icon name="check" size={16} className="text-sage-600" strokeWidth={2.2} /> Advisor-controlled access</span>
+              <span className="flex items-center gap-2"><Icon name="check" size={16} className="text-sage-600" strokeWidth={2.2} /> Employer referral matching</span>
             </div>
           </div>
         </section>
