@@ -21,7 +21,7 @@ export function Shell({ nav, children }: { nav: NavItem[]; children: ReactNode }
   const isAdvisor = user?.role === "advisor";
 
   return (
-    <div className="min-h-screen bg-paper">
+    <div className="min-h-screen">
       <header className="nav-surface sticky top-0 z-40 border-b border-black/5">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 sm:px-6">
           <Link to="/" className="mr-4 shrink-0">

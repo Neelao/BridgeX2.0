@@ -114,7 +114,7 @@ export function AuthLayout({
       </div>
 
       {/* Form panel */}
-      <div className="flex items-center justify-center bg-paper px-6 py-12">
+      <div className="flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <Link to="/" className="mb-8 inline-block lg:hidden">
             <Logo />
