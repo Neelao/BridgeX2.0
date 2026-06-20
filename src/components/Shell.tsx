@@ -5,6 +5,7 @@ import { useAuth } from "../lib/auth";
 import { attentionItems } from "../lib/selectors";
 import { useStore } from "../lib/useStore";
 import { initials } from "../lib/format";
+import { AdvisorAssistant } from "./AdvisorAssistant";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { Logo } from "./ui";
@@ -75,6 +76,8 @@ export function Shell({ nav, children }: { nav: NavItem[]; children: ReactNode }
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
+
+      {isAdvisor && user && <AdvisorAssistant advisorId={user.id} />}
     </div>
   );
 }
