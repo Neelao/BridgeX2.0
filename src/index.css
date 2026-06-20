@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces — cool lavender-gray backdrop, white panels, near-black ink */
+  --color-paper: #ececf3;
+  --color-paper-2: #f4f4f9;
+  --color-surface: #ffffff;
+  --color-cream: #fffbea;
+
+  --color-ink-900: #17181c;
+  --color-ink-800: #25262c;
+  --color-ink-700: #3a3b43;
+  --color-ink-600: #54565f;
+
+  --color-line: #e7e8ef;
+  --color-line-strong: #d8dae4;
+  --color-muted: #7e8090;
+
+  /* Bright azure accent (links, slider, accent buttons) — kept under the
+     "steel-*" names so existing usages pick up the new tone automatically */
+  --color-steel-50: #eaf3fd;
+  --color-steel-100: #d4e7fb;
+  --color-steel-200: #b4d6f8;
+  --color-steel-300: #8fc1f4;
+  --color-steel-400: #6fb1f1;
+  --color-steel-500: #3b93ea;
+  --color-steel-600: #2f7fd6;
+  --color-steel-700: #2569b4;
+
+  /* Semantic tones */
+  --color-sage-50: #e7f5ec;
+  --color-sage-100: #d2edda;
+  --color-sage-500: #3f9d6a;
+  --color-sage-600: #2f8557;
+  --color-sage-700: #266b46;
+
+  --color-gold-50: #fbf1dd;
+  --color-gold-100: #f4e2bb;
+  --color-gold-500: #c08a2e;
+  --color-gold-600: #9c6f22;
+
+  --color-clay-50: #fbe7e6;
+  --color-clay-100: #f5cfcd;
+  --color-clay-500: #d05c52;
+  --color-clay-600: #b1463e;
+
+  /* Soft pastel card headers (LuckyJob-style) */
+  --color-peach: #fbe6d6;
+  --color-mint: #d9f0e4;
+  --color-lilac: #e8e1f8;
+  --color-sky: #dbeafb;
+  --color-blush: #fbe1eb;
+  --color-stone: #e9ebf1;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-feature-settings: "cv01", "cv03", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  background: var(--color-paper);
+  color: var(--color-ink-900);
+}
+
+/* Tighter optical tracking on large display text */
+h1,
+h2 {
+  letter-spacing: -0.012em;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Soft dusty rose → mauve navbar (premium, light) */
+.nav-surface {
+  background-image: linear-gradient(100deg, #ede1e4 0%, #e4d1d5 52%, #d6bfc4 100%);
+}
+
+/* Subtle entrance animation for grids/cards */
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise {
+  animation: riseIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
+
+/* Thin, muted scrollbars */
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 999px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
