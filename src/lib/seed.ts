@@ -2,6 +2,7 @@ import { analyzeInterview, summarizeCompany } from "./ai";
 import {
   Companies,
   Interviews,
+  Messages,
   Notes,
   Profiles,
   Reminders,
@@ -220,6 +221,35 @@ export function ensureSeeded() {
     done: false,
     source: "manual",
   });
+
+  // Seed direct messages from advisor to each client.
+  const msgSeed: Array<{ clientId: string; msgs: Array<{ text: string; daysAgo: number }> }> = [
+    {
+      clientId: "cli_amir",
+      msgs: [
+        { text: "Hi Amir! Great work on your mock interview — really impressive answers. Let's focus on your accessibility and GraphQL gaps when we meet.", daysAgo: 3 },
+        { text: "I've reviewed your CV and I'm going to draft a tailored resume for Monzo. Keep an eye on your profile — I'll share it before our session.", daysAgo: 1 },
+      ],
+    },
+    {
+      clientId: "cli_lena",
+      msgs: [
+        { text: "Hi Lena, I've put together a STAR-method worksheet for you. Please have a look before our session tomorrow — it'll help sharpen your storytelling.", daysAgo: 2 },
+      ],
+    },
+    {
+      clientId: "cli_sam",
+      msgs: [
+        { text: "Sam, your SQL and Tableau answers were really strong! Your dashboard story landed well. Next step: build out a clear ML narrative so you're ready for that question.", daysAgo: 9 },
+        { text: "You're nearly interview-ready. Let's review your ML talking points in our next session.", daysAgo: 3 },
+      ],
+    },
+  ];
+  for (const { clientId, msgs } of msgSeed) {
+    for (const { text, daysAgo } of msgs) {
+      Messages.add({ id: uid("msg"), advisorId: advisor.id, clientId, fromRole: "advisor", text, at: now - daysAgo * DAY });
+    }
+  }
 
   // Contact recency — drives the "needs attention" feed (some fresh, some stale).
   Users.update("cli_amir", { lastContactAt: now - 1 * DAY });

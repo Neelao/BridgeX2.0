@@ -1,5 +1,6 @@
 import type {
   ClientProfile,
+  DirectMessage,
   Interview,
   Note,
   Reminder,
@@ -25,6 +26,7 @@ const KEYS = {
   reminders: "bx_reminders",
   notes: "bx_notes",
   resumes: "bx_resumes",
+  messages: "bx_messages",
   currentUser: "bx_current_user",
   seeded: "bx_seeded_v2",
 } as const;
@@ -191,6 +193,22 @@ export const Resumes = {
     rows.push(resume);
     Resumes.save(rows);
     return resume;
+  },
+};
+
+/* ---------------- Direct messages ---------------- */
+export const Messages = {
+  all: () => read<DirectMessage[]>(KEYS.messages, []),
+  save: (rows: DirectMessage[]) => write(KEYS.messages, rows),
+  forConversation: (advisorId: string, clientId: string) =>
+    Messages.all()
+      .filter((m) => m.advisorId === advisorId && m.clientId === clientId)
+      .sort((a, b) => a.at - b.at),
+  add: (msg: DirectMessage) => {
+    const rows = Messages.all();
+    rows.push(msg);
+    Messages.save(rows);
+    return msg;
   },
 };
 

@@ -20,6 +20,7 @@ import ClientHome from "./pages/client/Home";
 import ClientProfile from "./pages/client/Profile";
 import ClientInterview from "./pages/client/Interview";
 import ClientResults from "./pages/client/Results";
+import ClientAdvisor from "./pages/client/Advisor";
 
 const ADVISOR_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: "/advisor", label: "Dashboard", icon: "dashboard" },
@@ -29,9 +30,9 @@ const ADVISOR_NAV: { to: string; label: string; icon: IconName }[] = [
 
 const CLIENT_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: "/client", label: "Overview", icon: "dashboard" },
-  { to: "/client/profile", label: "Profile", icon: "file" },
   { to: "/client/interview", label: "Mock Interview", icon: "mic" },
   { to: "/client/results", label: "Results", icon: "chart" },
+  { to: "/client/advisor", label: "My Advisor", icon: "users" },
 ];
 
 function Protected({ role, children }: { role: Role; children: ReactNode }) {
@@ -79,6 +80,7 @@ export default function App() {
                 <Route path="profile" element={<ClientProfile />} />
                 <Route path="interview" element={<ClientInterview />} />
                 <Route path="results" element={<ClientResults />} />
+                <Route path="advisor" element={<ClientAdvisor />} />
                 <Route path="*" element={<Navigate to="/client" replace />} />
               </Routes>
             </Shell>

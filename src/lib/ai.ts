@@ -80,6 +80,99 @@ export function isInterviewComplete(candidateTurns: number): boolean {
   return candidateTurns >= QUESTION_FLOW.length;
 }
 
+/* -------- CV / Resume Analysis -------- */
+
+export interface CvAnalysis {
+  skills: string[];
+  projects: string[];
+  achievements: string[];
+  experienceLevel: "Junior" | "Mid-level" | "Senior";
+  personalizedQuestions: string[];
+}
+
+/**
+ * Generates 5 interview questions tailored to the candidate's actual CV content.
+ * References specific projects, skills, and achievements so questions feel personal.
+ */
+export function generatePersonalizedQuestions(
+  profile: ClientProfile,
+  target?: TargetCompany
+): string[] {
+  const cvText = profile.cvText ?? "";
+  const cvSkills = [...new Set(words(cvText).filter((w) => SKILL_BANK.includes(w)))];
+  const topSkills = cvSkills.slice(0, 3);
+
+  const lines = cvText
+    .split(/\n|\.(?=\s)/)
+    .map((l) => l.trim().replace(/^[•\-*]\s*/, ""))
+    .filter((l) => l.length > 20);
+
+  const projectLines = lines.filter((l) =>
+    /(built|developed|led|launched|shipped|created|designed|migrated|architected|reduced|increased|delivered)/i.test(l)
+  );
+
+  const role = target?.roleTitle ?? profile.headline ?? "this role";
+  const company = target?.company;
+  const targetSkills = target ? extractKeywords(target.jobDescription).slice(0, 3) : [];
+  const skillFocus =
+    targetSkills.length ? targetSkills.join(", ") : topSkills.join(", ") || "your core skills";
+
+  const q2 =
+    projectLines.length > 0
+      ? (() => {
+          const proj = projectLines[0].trim();
+          const short = proj.length > 100 ? proj.slice(0, 97) + "…" : proj;
+          return `Your CV mentions "${short}" — walk me through your specific contribution and what you'd do differently today.`;
+        })()
+      : `Tell me about a project or achievement you're most proud of${profile.yearsExperience > 0 ? ` from your ${profile.yearsExperience}-year career` : ""}. What was your specific role and the measurable outcome?`;
+
+  return [
+    company
+      ? `Tell me about yourself and what makes you a strong fit for the ${role} role at ${company}.`
+      : `Walk me through your background${topSkills.length ? ` — especially your experience with ${topSkills.slice(0, 2).join(" and ")}` : ""}.`,
+    q2,
+    `With ${skillFocus} being central to this position, describe a situation where you applied those skills under real pressure. What was the result?`,
+    "Tell me about a time you had a significant disagreement with a teammate or on a technical direction. How did you handle it and what did you learn?",
+    company
+      ? `Why ${company} specifically, and where do you see yourself growing over the next two years?`
+      : "Where do you feel your skills are strongest today, and what are you actively working to develop?",
+  ];
+}
+
+/**
+ * Analyses a candidate's CV text to extract structured insights.
+ * Used to power the profile page's AI analysis panel.
+ */
+export function analyzeCv(profile: ClientProfile, target?: TargetCompany): CvAnalysis {
+  const cvText = profile.cvText ?? "";
+  const skills = [...new Set(words(cvText).filter((w) => SKILL_BANK.includes(w)))];
+
+  const lines = cvText
+    .split(/\n|\.(?=\s)/)
+    .map((l) => l.trim().replace(/^[•\-*]\s*/, ""))
+    .filter((l) => l.length > 20);
+
+  const projects = lines
+    .filter((l) =>
+      /(built|developed|led|launched|shipped|created|designed|migrated|architected)/i.test(l)
+    )
+    .slice(0, 4);
+
+  const achievements = lines
+    .filter((l) =>
+      /\d+%|\$\d|\b\d+\s?(users|customers|projects|hours|days|weeks|months|people|engineers|clients)\b/i.test(l)
+    )
+    .slice(0, 3);
+
+  const yrs = profile.yearsExperience ?? 0;
+  const experienceLevel: CvAnalysis["experienceLevel"] =
+    yrs >= 6 ? "Senior" : yrs >= 3 ? "Mid-level" : "Junior";
+
+  const personalizedQuestions = generatePersonalizedQuestions(profile, target);
+
+  return { skills, projects, achievements, experienceLevel, personalizedQuestions };
+}
+
 /* -------- Analyze a completed interview -------- */
 export function analyzeInterview(
   messages: ChatMessage[],

@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { Companies, Interviews, Profiles, uid } from "../../lib/db";
-import { aiDelay, analyzeInterview, buildQuestionFlow, isInterviewComplete } from "../../lib/ai";
+import { aiDelay, analyzeInterview, buildQuestionFlow, generatePersonalizedQuestions, isInterviewComplete } from "../../lib/ai";
 import { useStore } from "../../lib/useStore";
 import type { ChatMessage, Interview } from "../../lib/types";
 import { PageHeader } from "../../components/Shell";
-import { Avatar, Button, Card, Icon, Meter, Select } from "../../components/ui";
+import { AiBadge, Avatar, Button, Card, Icon, Meter, Select } from "../../components/ui";
 
 export default function InterviewPage() {
   const { user } = useAuth();
@@ -14,6 +14,8 @@ export default function InterviewPage() {
   const navigate = useNavigate();
 
   const companies = useStore(() => Companies.forClient(clientId), [clientId]);
+  const profile = useStore(() => Profiles.forClient(clientId), [clientId]);
+  const hasCv = !!profile?.cvText?.trim();
   const [targetId, setTargetId] = useState("");
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -37,7 +39,11 @@ export default function InterviewPage() {
 
   async function begin() {
     const target = companies.find((c) => c.id === targetId);
-    flow.current = buildQuestionFlow(target);
+    const currentProfile = Profiles.forClient(clientId);
+    flow.current =
+      currentProfile?.cvText?.trim()
+        ? generatePersonalizedQuestions(currentProfile, target)
+        : buildQuestionFlow(target);
     targetRef.current = target?.id ?? "";
     setStarted(true);
     setThinking(true);
@@ -102,11 +108,38 @@ export default function InterviewPage() {
             </span>
             <h2 className="mt-4 text-lg font-semibold text-ink-900">Ready for a practice round?</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
-              Our AI interviewer will ask {totalQuestions} common questions. Answer naturally — the more detail and
-              concrete examples you give, the better your readiness score. When you're done, you'll get instant feedback
-              and your advisor gets a coaching plan.
+              Our AI interviewer will ask {totalQuestions} questions. Answer naturally — the more detail and
+              concrete examples you give, the better your readiness score. When you're done, you'll get instant
+              feedback and your advisor gets a coaching plan.
             </p>
-            <ul className="mx-auto mt-6 max-w-sm space-y-2.5 text-left text-sm text-ink-700">
+
+            {/* CV personalization notice */}
+            {hasCv ? (
+              <div className="mx-auto mt-5 flex max-w-sm items-start gap-2.5 rounded-xl border border-steel-200 bg-steel-50 px-4 py-3 text-left">
+                <Icon name="sparkle" size={16} className="mt-0.5 shrink-0 text-steel-500" />
+                <div>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <p className="text-[13px] font-semibold text-steel-800">CV-personalized questions</p>
+                    <AiBadge />
+                  </div>
+                  <p className="text-xs text-steel-600">
+                    Questions are tailored to your resume — referencing your actual projects and skills.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="mx-auto mt-5 flex max-w-sm items-start gap-2.5 rounded-xl border border-gold-200 bg-gold-50 px-4 py-3 text-left">
+                <Icon name="alert" size={16} className="mt-0.5 shrink-0 text-gold-600" strokeWidth={2} />
+                <div>
+                  <p className="text-[13px] font-semibold text-gold-800">No CV uploaded yet</p>
+                  <p className="text-xs text-gold-700">
+                    <a href="/client/profile" className="underline">Add your CV in Profile</a> to get questions personalised to your experience.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <ul className="mx-auto mt-5 max-w-sm space-y-2 text-left text-sm text-ink-700">
               {[
                 "Use real examples and numbers where you can.",
                 "Takes about five minutes to complete.",
