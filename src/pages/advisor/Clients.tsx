@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
-import { clientViews } from "../../lib/selectors";
+import { clientViews, segmentsOf } from "../../lib/selectors";
+import type { Segment } from "../../lib/selectors";
 import { Users, uid } from "../../lib/db";
 import type { User } from "../../lib/types";
 import { PageHeader } from "../../components/Shell";
@@ -18,10 +19,26 @@ export default function Clients() {
   const [created, setCreated] = useState<{ email: string; password: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState("");
+  const [segment, setSegment] = useState<Segment | "all">("all");
 
-  const filtered = views.filter((v) =>
-    `${v.user.name} ${v.user.targetRole ?? ""} ${v.targetCompany ?? ""}`.toLowerCase().includes(query.toLowerCase())
-  );
+  const SEGMENTS: { key: Segment | "all"; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "improving", label: "Improving" },
+    { key: "struggling", label: "Struggling" },
+    { key: "referral-ready", label: "Referral-ready" },
+    { key: "inactive", label: "Inactive" },
+  ];
+
+  const counts = (key: Segment | "all") =>
+    key === "all" ? views.length : views.filter((v) => segmentsOf(v).includes(key as Segment)).length;
+
+  const filtered = views.filter((v) => {
+    const matchesQuery = `${v.user.name} ${v.user.targetRole ?? ""} ${v.targetCompany ?? ""}`
+      .toLowerCase()
+      .includes(query.toLowerCase());
+    const matchesSegment = segment === "all" || segmentsOf(v).includes(segment as Segment);
+    return matchesQuery && matchesSegment;
+  });
 
   return (
     <div>
@@ -37,14 +54,34 @@ export default function Clients() {
       />
 
       {views.length > 0 && (
-        <div className="relative mb-5 max-w-sm">
-          <Icon name="search" size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            placeholder="Search clients…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-full border border-line-strong bg-surface py-2.5 pl-11 pr-4 text-sm outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
-          />
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {SEGMENTS.map((s) => {
+              const active = segment === s.key;
+              const n = counts(s.key);
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => setSegment(s.key)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition ${
+                    active ? "border-transparent bg-ink-900 text-white" : "border-line-strong bg-surface text-ink-700 hover:bg-paper-2"
+                  }`}
+                >
+                  {s.label}
+                  <span className={`text-xs ${active ? "text-white/70" : "text-muted"}`}>{n}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="relative sm:w-64">
+            <Icon name="search" size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              placeholder="Search clients…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full rounded-full border border-line-strong bg-surface py-2.5 pl-11 pr-4 text-sm outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
+            />
+          </div>
         </div>
       )}
 

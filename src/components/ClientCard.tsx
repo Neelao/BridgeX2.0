@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { ClientView } from "../lib/selectors";
-import { fmtDate } from "../lib/format";
+import { fmtDate, READINESS_META } from "../lib/format";
 import { Avatar, Icon, Tag } from "./ui";
 
 const PASTELS = ["bg-peach", "bg-mint", "bg-lilac", "bg-sky", "bg-blush", "bg-stone"] as const;
@@ -12,8 +12,9 @@ function pastelFor(seed: string): string {
 }
 
 export function ClientCard({ view, index = 0 }: { view: ClientView; index?: number }) {
-  const { user, readiness, interviewCount, hasProfile, targetCompany } = view;
+  const { user, readiness, trend, interviewCount, hasProfile, targetCompany } = view;
   const pastel = pastelFor(user.id);
+  const status = user.readinessStatus;
 
   return (
     <Link
@@ -24,9 +25,16 @@ export function ClientCard({ view, index = 0 }: { view: ClientView; index?: numb
       {/* Pastel header */}
       <div className={`${pastel} p-5`}>
         <div className="flex items-center justify-between">
-          <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-ink-700">
-            Joined {fmtDate(user.createdAt)}
-          </span>
+          {status ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-semibold" style={{ color: READINESS_META[status].color }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: READINESS_META[status].color }} />
+              {READINESS_META[status].short}
+            </span>
+          ) : (
+            <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-ink-700">
+              Joined {fmtDate(user.createdAt)}
+            </span>
+          )}
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-ink-700 transition group-hover:bg-white">
             <Icon name="arrowUpRight" size={15} />
           </span>
@@ -57,9 +65,14 @@ export function ClientCard({ view, index = 0 }: { view: ClientView; index?: numb
         <div>
           {typeof readiness === "number" ? (
             <>
-              <p className="text-xl font-semibold tnum text-ink-900">
+              <p className="flex items-center gap-1.5 text-xl font-semibold tnum text-ink-900">
                 {readiness}
                 <span className="text-sm font-medium text-muted">/100</span>
+                {trend !== null && trend !== 0 && (
+                  <span className={`text-xs font-semibold ${trend > 0 ? "text-sage-600" : "text-clay-500"}`}>
+                    {trend > 0 ? "↑" : "↓"}{Math.abs(trend)}
+                  </span>
+                )}
               </p>
               <p className="text-xs text-muted">readiness score</p>
             </>

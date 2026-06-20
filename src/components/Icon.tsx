@@ -114,6 +114,7 @@ const PATHS: Record<string, ReactNode> = {
   ),
   chevronDown: <polyline points="6 9 12 15 18 9" />,
   chevronRight: <polyline points="9 18 15 12 9 6" />,
+  chevronLeft: <polyline points="15 18 9 12 15 6" />,
   logout: (
     <>
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

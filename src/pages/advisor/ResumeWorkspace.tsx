@@ -175,20 +175,36 @@ export default function ResumeWorkspace() {
           {target?.aiSummary && (
             <Card>
               <CardHeader title="Keywords to include" />
-              <div className="flex flex-wrap gap-1.5 p-5">
-                {target.aiSummary.keywords.map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => {
-                      const set = new Set(skillsText.split(",").map((s) => s.trim()).filter(Boolean));
-                      set.add(k);
-                      setSkillsText([...set].join(", "));
-                    }}
-                    className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-medium text-ink-700 transition hover:border-steel-300 hover:bg-steel-50"
-                  >
-                    + {k}
-                  </button>
-                ))}
+              <div className="p-5">
+                <p className="mb-3 text-xs text-muted">Tap a keyword to add it to the skills field. Added keywords are highlighted.</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {target.aiSummary.keywords.map((k) => {
+                    const current = skillsText.split(",").map((s) => s.trim()).filter(Boolean);
+                    const added = current.some((s) => s.toLowerCase() === k.toLowerCase());
+                    return (
+                      <button
+                        key={k}
+                        onClick={() => {
+                          if (added) {
+                            setSkillsText(current.filter((s) => s.toLowerCase() !== k.toLowerCase()).join(", "));
+                          } else {
+                            setSkillsText([...current, k].join(", "));
+                            toast(`Added "${k}" to skills`);
+                          }
+                        }}
+                        aria-pressed={added}
+                        className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          added
+                            ? "border-transparent bg-steel-500 text-white hover:bg-steel-600"
+                            : "border-line bg-surface text-ink-700 hover:border-steel-300 hover:bg-steel-50"
+                        }`}
+                      >
+                        <Icon name={added ? "check" : "plus"} size={12} strokeWidth={2.4} />
+                        {k}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </Card>
           )}

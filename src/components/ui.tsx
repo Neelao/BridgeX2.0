@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { avatarColor, initials, scoreBand } from "../lib/format";
+import { avatarColor, initials, scoreBand, READINESS_META, REFERRAL_META } from "../lib/format";
+import type { ReadinessStatus, ReferralStatus } from "../lib/types";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 
@@ -216,6 +217,28 @@ export function CountPill({ children }: { children: ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-line bg-surface px-3 py-0.5 text-sm font-semibold tnum text-muted">
       {children}
+    </span>
+  );
+}
+
+export function ReadinessTag({ status, size = "md" }: { status: ReadinessStatus; size?: "sm" | "md" }) {
+  const m = READINESS_META[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-semibold ${size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs"}`}
+      style={{ background: m.bg, color: m.color }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.color }} />
+      {size === "sm" ? m.short : m.label}
+    </span>
+  );
+}
+
+export function ReferralTag({ status }: { status: ReferralStatus }) {
+  const m = REFERRAL_META[status];
+  return (
+    <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ background: m.bg, color: m.color }}>
+      {m.label}
     </span>
   );
 }

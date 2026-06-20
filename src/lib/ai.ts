@@ -2,10 +2,13 @@ import { Interviews, Notes, Reminders, Sessions, Users } from "./db";
 import { fmtDate, fmtDateTime } from "./format";
 import { attentionItems, buildClientView, clientViews, rosterStats } from "./selectors";
 import type {
+  CandidateSummary,
   ChatMessage,
   ClientProfile,
   CompanySummary,
   InterviewAnalysis,
+  MatchResult,
+  Opportunity,
   Resume,
   TargetCompany,
   User,
@@ -21,6 +24,20 @@ import type {
 // Simulate network latency so the UI shows realistic "thinking" states.
 export function aiDelay(ms = 850) {
   return new Promise((res) => setTimeout(res, ms));
+}
+
+export const COACHING_TIPS = [
+  "Clients who quantify their wins (%, $, time saved) score about 12 points higher.",
+  "A short check-in every 7 days keeps candidates engaged and readiness climbing.",
+  "Tailor the resume to one target role's keywords — generic CVs convert worse.",
+  "STAR-method drills are the fastest fix for short, unstructured answers.",
+  "Mark a candidate 'Employer ready' only after a 70+ score and a clean mock.",
+  "Refer early-career candidates to grad schemes and internships, not senior roles.",
+  "Share one piece of written feedback after each session — it compounds.",
+];
+
+export function tipOfDay(): string {
+  return COACHING_TIPS[new Date().getDate() % COACHING_TIPS.length];
 }
 
 function words(text: string): string[] {
@@ -158,7 +175,32 @@ export function analyzeInterview(
 
   const summary = buildSummary(score, avgWords, usesExamples, usesMetrics, matched, target, profile);
 
-  return { readinessScore: score, summary, strengths, gaps, coachingActions, resumeSuggestions };
+  // Dimension sub-scores for the performance analytics panel.
+  const clamp = (n: number) => Math.max(20, Math.min(98, Math.round(n)));
+  const communication = clamp(
+    42 + Math.min(avgWords, 80) * 0.45 + (usesExamples ? 10 : 0) + (answers.length >= 5 ? 6 : 0)
+  );
+  const assertive = /(led|owned|drove|built|launched|delivered|managed|initiated|spearheaded|i\s+(decided|chose|proposed))/i.test(allText);
+  const confidence = clamp(
+    44 + Math.min(avgWords, 70) * 0.3 + (assertive ? 14 : 0) + (usesMetrics ? 10 : 0)
+  );
+  const technical = clamp(
+    target && targetSkills.length
+      ? 40 + (matched.length / targetSkills.length) * 48 + candidateSkills.size * 1.5
+      : 46 + candidateSkills.size * 5 + (usesMetrics ? 6 : 0)
+  );
+
+  return {
+    readinessScore: score,
+    communication,
+    confidence,
+    technical,
+    summary,
+    strengths,
+    gaps,
+    coachingActions,
+    resumeSuggestions,
+  };
 }
 
 function buildSummary(
@@ -247,6 +289,97 @@ export interface BriefingItem {
   clientId: string;
   line: string;
   tone: "good" | "warn" | "info";
+}
+
+/* -------- AI candidate summary (background, goals, strengths, weaknesses, support) -------- */
+export function candidateSummary(
+  user: User,
+  profile?: ClientProfile,
+  analysis?: InterviewAnalysis,
+  targets: TargetCompany[] = []
+): CandidateSummary {
+  const role = user.targetRole ?? profile?.headline ?? "their target role";
+  const years = profile?.yearsExperience ?? 0;
+  const cvSkills = profile ? Array.from(new Set(words(profile.cvText).filter((w) => SKILL_BANK.includes(w)))) : [];
+
+  const background =
+    (profile?.headline ? `${profile.headline}. ` : "") +
+    (years ? `${years} years of experience` : "Early-career candidate") +
+    (profile?.location ? `, based in ${profile.location}.` : ".") +
+    (cvSkills.length ? ` Core skills include ${cvSkills.slice(0, 5).join(", ")}.` : "");
+
+  const companyLine = targets.length
+    ? `Pursuing ${role} roles, with ${targets.map((t) => t.company).slice(0, 3).join(", ")} on their target list.`
+    : `Pursuing ${role} roles.`;
+  const careerGoals = `${companyLine}${user.careerInterests ? ` Interests: ${user.careerInterests}.` : ""}`;
+
+  const strengths = analysis?.strengths?.slice(0, 3) ?? (cvSkills.length ? [`Solid foundation in ${cvSkills.slice(0, 3).join(", ")}.`] : ["Engaged and coachable."]);
+  const weaknesses = analysis?.gaps?.slice(0, 3) ?? ["No interview completed yet — readiness unverified."];
+
+  const supportAreas: string[] = [];
+  if (!profile?.cvText?.trim()) supportAreas.push("Needs a complete CV on file.");
+  if (!analysis) supportAreas.push("Hasn't completed a mock interview yet.");
+  if (analysis && analysis.confidence < 60) supportAreas.push("Build interview confidence with timed mocks.");
+  if (analysis && analysis.technical < 60) supportAreas.push("Strengthen technical depth for the target role.");
+  if (analysis && analysis.communication < 60) supportAreas.push("Coach structured, concise communication (STAR).");
+  if (!targets.length) supportAreas.push("Add a target company to focus prep.");
+  if (!supportAreas.length) supportAreas.push("On track — keep momentum with regular check-ins.");
+
+  return { background, careerGoals, strengths, weaknesses, supportAreas: supportAreas.slice(0, 4) };
+}
+
+/* -------- Candidate ↔ opportunity matching -------- */
+export interface MatchContext {
+  user: User;
+  profile?: ClientProfile;
+  analysis?: InterviewAnalysis;
+  targets: TargetCompany[];
+}
+
+export function matchCandidate(opportunity: Opportunity, ctx: MatchContext): MatchResult {
+  const { user, profile, analysis, targets } = ctx;
+  const oppSkills = opportunity.skills.map((s) => s.toLowerCase());
+  const candSkills = new Set<string>([
+    ...(profile ? words(profile.cvText).filter((w) => SKILL_BANK.includes(w)) : []),
+    ...targets.flatMap((t) => extractKeywords(t.jobDescription)),
+  ]);
+  const overlap = oppSkills.filter((s) => candSkills.has(s));
+  const skillPct = oppSkills.length ? overlap.length / oppSkills.length : 0;
+
+  const reasons: string[] = [];
+  let score = 30 + skillPct * 40;
+  if (overlap.length) reasons.push(`Matches ${overlap.length}/${oppSkills.length} required skills (${overlap.slice(0, 4).join(", ")})`);
+
+  if (analysis) {
+    score += (analysis.readinessScore / 100) * 18;
+    if (analysis.readinessScore >= 80) reasons.push(`Interview-ready (${analysis.readinessScore}/100)`);
+    if (opportunity.kind !== "internship" && opportunity.kind !== "grad" && analysis.technical >= 70)
+      reasons.push(`Strong technical score (${analysis.technical})`);
+  } else {
+    score -= 8;
+    reasons.push("No interview on record yet");
+  }
+
+  if (user.readinessStatus === "employer_ready") {
+    score += 10;
+    reasons.push("Advisor-approved as employer ready");
+  } else if (user.readinessStatus === "not_ready") {
+    score -= 12;
+  }
+
+  // Role / interest alignment.
+  const roleText = `${user.targetRole ?? ""} ${user.careerInterests ?? ""}`.toLowerCase();
+  if (roleText && opportunity.role.toLowerCase().split(/\s+/).some((w) => w.length > 3 && roleText.includes(w))) {
+    score += 8;
+    reasons.push(`Aligns with their target role (${user.targetRole})`);
+  }
+  if ((opportunity.kind === "internship" || opportunity.kind === "grad") && (profile?.yearsExperience ?? 0) <= 2) {
+    score += 6;
+    reasons.push("Experience level fits an early-career path");
+  }
+
+  if (!reasons.length) reasons.push("Partial profile overlap");
+  return { clientId: user.id, score: Math.max(8, Math.min(99, Math.round(score))), reasons: reasons.slice(0, 3) };
 }
 
 /* -------- Draft a tailored resume from CV + interview + target criteria -------- */

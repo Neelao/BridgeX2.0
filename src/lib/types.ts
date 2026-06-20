@@ -1,5 +1,10 @@
 export type Role = "advisor" | "client";
 
+/** Advisor-controlled readiness gate (final approval stays with the advisor). */
+export type ReadinessStatus = "not_ready" | "coaching" | "employer_ready";
+
+export type NoteKind = "coaching" | "resume" | "interview" | "career";
+
 export interface User {
   id: string;
   role: Role;
@@ -14,8 +19,10 @@ export interface User {
   advisorId?: string;
   phone?: string;
   targetRole?: string;
+  careerInterests?: string;
   archived?: boolean;
   lastContactAt?: number; // advisor's last logged touchpoint with this client
+  readinessStatus?: ReadinessStatus; // advisor's manual approval gate
 }
 
 export interface Note {
@@ -24,6 +31,8 @@ export interface Note {
   clientId: string;
   text: string;
   at: number;
+  kind: NoteKind;
+  shared: boolean; // visible to the client as advisor feedback
 }
 
 export interface Resume {
@@ -85,11 +94,52 @@ export interface Interview {
 
 export interface InterviewAnalysis {
   readinessScore: number; // 0-100
+  communication: number; // 0-100
+  confidence: number; // 0-100
+  technical: number; // 0-100
   summary: string;
   strengths: string[];
   gaps: string[];
   coachingActions: string[]; // advisor-facing follow-up actions
   resumeSuggestions: string[];
+}
+
+export interface CandidateSummary {
+  background: string;
+  careerGoals: string;
+  strengths: string[];
+  weaknesses: string[];
+  supportAreas: string[];
+}
+
+export type OpportunityKind = "company" | "recruiter" | "grad" | "internship";
+
+export interface Opportunity {
+  id: string;
+  kind: OpportunityKind;
+  org: string;
+  role: string;
+  location: string;
+  skills: string[];
+  description: string;
+}
+
+export type ReferralStatus = "suggested" | "sent" | "interviewing" | "placed" | "declined";
+
+export interface Referral {
+  id: string;
+  advisorId: string;
+  clientId: string;
+  opportunityId: string;
+  status: ReferralStatus;
+  note?: string;
+  at: number;
+}
+
+export interface MatchResult {
+  clientId: string;
+  score: number; // 0-100
+  reasons: string[];
 }
 
 export interface Session {
