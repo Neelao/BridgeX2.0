@@ -40,7 +40,7 @@ export default function AdvisorMessages() {
         </Card>
 
         <Card className="flex h-[70vh] flex-col lg:col-span-2">
-          {active ? <Thread key={active.id} clientId={active.id} clientName={active.name} /> : null}
+          {active ? <Thread key={active.id} advisorId={advisorId} clientId={active.id} clientName={active.name} /> : null}
         </Card>
       </div>
     </div>
@@ -69,7 +69,7 @@ function attachmentLabel(kind: "image" | "audio" | "file") {
   return kind === "image" ? "Photo" : kind === "audio" ? "Voice message" : "Attachment";
 }
 
-function Thread({ clientId, clientName }: { clientId: string; clientName: string }) {
+function Thread({ advisorId, clientId, clientName }: { advisorId: string; clientId: string; clientName: string }) {
   const messages = useStore(() => Messages.forClient(clientId), [clientId]);
   return (
     <>
@@ -82,7 +82,7 @@ function Thread({ clientId, clientName }: { clientId: string; clientName: string
         meRole="advisor"
         emptyText={`No messages yet. Say hello to ${clientName.split(" ")[0]}.`}
         onSend={(text, attachment) => {
-          Messages.add({ id: uid("msg"), clientId, from: "advisor", text, at: Date.now(), attachment });
+          Messages.add({ id: uid("msg"), advisorId, clientId, from: "advisor", text, at: Date.now(), attachment });
           Users.touchContact(clientId);
         }}
       />

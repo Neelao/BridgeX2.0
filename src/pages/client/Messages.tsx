@@ -37,7 +37,7 @@ export default function ClientMessages() {
           meRole="client"
           emptyText="No messages yet. Reach out to your advisor with any questions."
           onSend={(text, attachment) => {
-            Messages.add({ id: uid("msg"), clientId, from: "client", text, at: Date.now(), attachment });
+            Messages.add({ id: uid("msg"), advisorId: advisor.id, clientId, from: "client", text, at: Date.now(), attachment });
           }}
         />
       </Card>

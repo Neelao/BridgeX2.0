@@ -29,10 +29,10 @@ const KEYS = {
   reminders: "bx_reminders",
   notes: "bx_notes",
   resumes: "bx_resumes",
+  messages: "bx_messages",
   opportunities: "bx_opportunities",
   referrals: "bx_referrals",
   advisorChats: "bx_advisor_chats",
-  messages: "bx_messages",
   currentUser: "bx_current_user",
   seeded: "bx_seeded_v5",
 } as const;
@@ -238,6 +238,10 @@ export const Messages = {
   forClient: (clientId: string) =>
     Messages.all()
       .filter((m) => m.clientId === clientId)
+      .sort((a, b) => a.at - b.at),
+  forConversation: (advisorId: string, clientId: string) =>
+    Messages.all()
+      .filter((m) => m.advisorId === advisorId && m.clientId === clientId)
       .sort((a, b) => a.at - b.at),
   add: (message: DirectMessage) => {
     const rows = Messages.all();

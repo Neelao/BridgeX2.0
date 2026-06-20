@@ -45,6 +45,7 @@ export interface MessageAttachment {
 
 export interface DirectMessage {
   id: string;
+  advisorId: string;
   clientId: string; // the advisor<->this client thread
   from: "advisor" | "client";
   text: string;
@@ -71,6 +72,7 @@ export interface ClientProfile {
   yearsExperience: number;
   cvText: string; // pasted / "uploaded" CV content
   cvFileName?: string;
+  portfolioUrl?: string;
   updatedAt: number;
 }
 
@@ -158,6 +160,7 @@ export interface MatchResult {
   score: number; // 0-100
   reasons: string[];
 }
+
 
 export interface Session {
   id: string;
