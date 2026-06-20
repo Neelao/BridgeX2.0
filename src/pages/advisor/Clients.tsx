@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
 import { clientViews, segmentsOf } from "../../lib/selectors";
 import type { Segment } from "../../lib/selectors";
+
+const SEGMENT_KEYS: Segment[] = ["improving", "struggling", "referral-ready", "inactive"];
 import { Users, uid } from "../../lib/db";
 import type { User } from "../../lib/types";
 import { PageHeader } from "../../components/Shell";
@@ -19,7 +22,31 @@ export default function Clients() {
   const [created, setCreated] = useState<{ email: string; password: string; name: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState("");
-  const [segment, setSegment] = useState<Segment | "all">("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlSegment = searchParams.get("segment");
+  const [segment, setSegment] = useState<Segment | "all">(
+    urlSegment && SEGMENT_KEYS.includes(urlSegment as Segment) ? (urlSegment as Segment) : "all"
+  );
+
+  // Honor ?segment= from the dashboard overview links (re-applies if it changes).
+  useEffect(() => {
+    const s = searchParams.get("segment");
+    setSegment(s && SEGMENT_KEYS.includes(s as Segment) ? (s as Segment) : "all");
+  }, [searchParams]);
+
+  // Open the "Add client" modal directly when arriving via the sidebar shortcut.
+  useEffect(() => {
+    if (searchParams.get("new") !== null) {
+      setOpen(true);
+      searchParams.delete("new");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const selectSegment = (key: Segment | "all") => {
+    setSegment(key);
+    setSearchParams(key === "all" ? {} : { segment: key }, { replace: true });
+  };
 
   const SEGMENTS: { key: Segment | "all"; label: string }[] = [
     { key: "all", label: "All" },
@@ -62,7 +89,7 @@ export default function Clients() {
               return (
                 <button
                   key={s.key}
-                  onClick={() => setSegment(s.key)}
+                  onClick={() => selectSegment(s.key)}
                   className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] font-medium transition ${
                     active ? "border-transparent bg-ink-900 text-white" : "border-line-strong bg-surface text-ink-700 hover:bg-paper-2"
                   }`}

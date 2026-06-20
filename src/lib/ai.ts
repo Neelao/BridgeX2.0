@@ -15,8 +15,8 @@ import type {
 } from "./types";
 
 /**
- * Mock "AI engine". In a real build these calls would hit an LLM (e.g. the
- * Claude API). Here they use lightweight heuristics so the whole product is
+ * Mock "AI engine". In a real build these calls would hit an LLM (e.g. an external LLM API). 
+ * Here they use lightweight heuristics so the whole product is
  * demoable with zero backend / API keys. The shapes match what a real model
  * would return, so swapping in a live call later is a drop-in change.
  */

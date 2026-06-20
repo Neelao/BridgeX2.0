@@ -526,7 +526,7 @@ function MessagesCard({
   function send() {
     const t = text.trim();
     if (!t) return;
-    Messages.add({ id: uid("msg"), advisorId, clientId, fromRole: "advisor", text: t, at: Date.now() });
+    Messages.add({ id: uid("msg"), advisorId, clientId, from: "advisor", text: t, at: Date.now() });
     Users.touchContact(clientId);
     setText("");
   }
@@ -542,10 +542,10 @@ function MessagesCard({
           <p className="py-2 text-center text-xs text-muted">No messages yet.</p>
         ) : (
           conversation.map((m) => (
-            <div key={m.id} className={`flex gap-2 ${m.fromRole === "advisor" ? "flex-row-reverse" : ""}`}>
+            <div key={m.id} className={`flex gap-2 ${m.from === "advisor" ? "flex-row-reverse" : ""}`}>
               <div
                 className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
-                  m.fromRole === "advisor"
+                  m.from === "advisor"
                     ? "rounded-tr-sm bg-steel-500 text-white"
                     : "rounded-tl-sm bg-paper-2 text-ink-800"
                 }`}

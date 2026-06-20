@@ -16,12 +16,14 @@ import AdvisorClientDetail from "./pages/advisor/ClientDetail";
 import AdvisorResume from "./pages/advisor/ResumeWorkspace";
 import AdvisorReferrals from "./pages/advisor/Referrals";
 import AdvisorSchedule from "./pages/advisor/Schedule";
+import AdvisorMessages from "./pages/advisor/Messages";
+import AdvisorProfile from "./pages/advisor/Profile";
 
 import ClientHome from "./pages/client/Home";
 import ClientProfile from "./pages/client/Profile";
 import ClientInterview from "./pages/client/Interview";
 import ClientResults from "./pages/client/Results";
-import ClientAdvisor from "./pages/client/Advisor";
+import ClientMessages from "./pages/client/Messages";
 
 const ADVISOR_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: "/advisor", label: "Dashboard", icon: "dashboard" },
@@ -34,7 +36,7 @@ const CLIENT_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: "/client", label: "Overview", icon: "dashboard" },
   { to: "/client/interview", label: "Mock Interview", icon: "mic" },
   { to: "/client/results", label: "Results", icon: "chart" },
-  { to: "/client/advisor", label: "My Advisor", icon: "users" },
+  { to: "/client/messages", label: "Messages", icon: "message" },
 ];
 
 function Protected({ role, children }: { role: Role; children: ReactNode }) {
@@ -65,6 +67,8 @@ export default function App() {
                 <Route path="clients/:clientId/resume" element={<AdvisorResume />} />
                 <Route path="referrals" element={<AdvisorReferrals />} />
                 <Route path="schedule" element={<AdvisorSchedule />} />
+                <Route path="messages" element={<AdvisorMessages />} />
+                <Route path="profile" element={<AdvisorProfile />} />
                 <Route path="*" element={<Navigate to="/advisor" replace />} />
               </Routes>
             </Shell>
@@ -83,7 +87,7 @@ export default function App() {
                 <Route path="profile" element={<ClientProfile />} />
                 <Route path="interview" element={<ClientInterview />} />
                 <Route path="results" element={<ClientResults />} />
-                <Route path="advisor" element={<ClientAdvisor />} />
+                <Route path="messages" element={<ClientMessages />} />
                 <Route path="*" element={<Navigate to="/client" replace />} />
               </Routes>
             </Shell>
