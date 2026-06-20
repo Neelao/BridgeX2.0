@@ -1,4 +1,5 @@
 import type {
+  AdvisorChatMessage,
   ClientProfile,
   Interview,
   Note,
@@ -29,6 +30,7 @@ const KEYS = {
   resumes: "bx_resumes",
   opportunities: "bx_opportunities",
   referrals: "bx_referrals",
+  advisorChats: "bx_advisor_chats",
   currentUser: "bx_current_user",
   seeded: "bx_seeded_v4",
 } as const;
@@ -225,6 +227,24 @@ export const Referrals = {
     return referral;
   },
   remove: (id: string) => Referrals.save(Referrals.all().filter((r) => r.id !== id)),
+};
+
+/* ---------------- Advisor assistant chat ---------------- */
+export const AdvisorChats = {
+  all: () => read<Record<string, AdvisorChatMessage[]>>(KEYS.advisorChats, {}),
+  save: (rows: Record<string, AdvisorChatMessage[]>) => write(KEYS.advisorChats, rows),
+  forAdvisor: (advisorId: string) => AdvisorChats.all()[advisorId] ?? [],
+  append: (advisorId: string, message: AdvisorChatMessage) => {
+    const rows = AdvisorChats.all();
+    rows[advisorId] = [...(rows[advisorId] ?? []), message];
+    AdvisorChats.save(rows);
+    return rows[advisorId];
+  },
+  clear: (advisorId: string) => {
+    const rows = AdvisorChats.all();
+    delete rows[advisorId];
+    AdvisorChats.save(rows);
+  },
 };
 
 export { KEYS };

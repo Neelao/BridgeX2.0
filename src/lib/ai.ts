@@ -1,3 +1,6 @@
+import { Interviews, Notes, Reminders, Sessions, Users } from "./db";
+import { fmtDate, fmtDateTime } from "./format";
+import { attentionItems, buildClientView, clientViews, rosterStats } from "./selectors";
 import type {
   CandidateSummary,
   ChatMessage,
@@ -429,4 +432,211 @@ function toActionBullet(line: string): string {
   const hasMetric = /\d/.test(t);
   const capped = t.charAt(0).toUpperCase() + t.slice(1);
   return hasMetric ? capped : `${capped} (add a metric: %, $, time, or scale).`;
+}
+
+/* -------- Advisor assistant: answers free-form questions about the roster -------- */
+export const ADVISOR_PROMPT_SUGGESTIONS = [
+  "Who needs my attention today?",
+  "Summarize my roster",
+  "What should I focus on this week?",
+  "Any overdue follow-ups?",
+  "Who's closest to being interview-ready?",
+];
+
+// Readiness score at/above this is considered "interview-ready" — matches the
+// threshold already used for the Dashboard's "Interview-ready" stat and ScoreBadge bands.
+const READY_THRESHOLD = 80;
+
+export function answerAdvisorQuery(advisorId: string, question: string): string {
+  const q = question.toLowerCase().trim();
+  const clients = Users.clientsOf(advisorId);
+
+  if (/^(hi|hey|hello|yo)\b/.test(q)) {
+    return "Hey, I'm Bridgy! Ask me about a specific client, your roster's overall readiness, who needs attention, or what to prep for upcoming sessions.";
+  }
+
+  const mentioned = clients.find((c) => {
+    const first = c.name.split(" ")[0].toLowerCase();
+    return q.includes(c.name.toLowerCase()) || (first.length > 2 && q.includes(first));
+  });
+  const asksPrediction = /(when (will|is)|how long|how many (more )?sessions?|ready by|progress|predict|trend|on track)/.test(q);
+  if (mentioned && asksPrediction) return readinessPredictionLine(mentioned);
+  if (mentioned) return clientBriefing(mentioned);
+
+  if (/(closest|soonest|who.*ready first)/.test(q)) return soonestToReadyBriefing(advisorId);
+  if (/(overdue|follow.?up|reminder)/.test(q)) return overdueBriefing(advisorId);
+  if (/(today|this week|agenda|upcoming|session|schedule)/.test(q)) return scheduleBriefing(advisorId);
+  if (/(attention|priorit|risk|who needs|falling behind)/.test(q)) return attentionBriefing(advisorId);
+  if (/(suggest|advice|recommend|what should i do|focus on|\baction)/.test(q)) return actionBriefing(advisorId);
+  if (/(overview|roster|stats|how (is|are) my|book of business|performance)/.test(q)) return rosterBriefing(advisorId);
+
+  if (!clients.length) {
+    return "You don't have any clients yet. Add one from the Clients page and I can start tracking their readiness and next steps.";
+  }
+
+  return (
+    `I can pull up anything about your ${clients.length} client${clients.length === 1 ? "" : "s"} — try naming one ` +
+    `(e.g. "How is ${clients[0].name.split(" ")[0]} doing?"), or ask about who needs attention, your roster stats, ` +
+    `upcoming sessions, or overdue follow-ups.`
+  );
+}
+
+function clientBriefing(client: User): string {
+  const view = buildClientView(client);
+  const notes = Notes.forClient(client.id);
+  const parts: string[] = [];
+  parts.push(
+    typeof view.readiness === "number"
+      ? `${client.name} has an interview readiness score of ${view.readiness}/100 across ${view.interviewCount} completed mock interview${view.interviewCount === 1 ? "" : "s"}.`
+      : `${client.name} hasn't completed a mock interview yet.`
+  );
+  if (view.targetCompany) parts.push(`Targeting: ${view.targetCompany}.`);
+  if (view.latestInterview?.analysis?.gaps.length) {
+    parts.push(`Top gap to coach: ${view.latestInterview.analysis.gaps[0]}`);
+  }
+  if (view.nextSessionAt) parts.push(`Next session ${fmtDateTime(view.nextSessionAt)}.`);
+  if (view.daysSinceContact != null) {
+    parts.push(`Last contact ${view.daysSinceContact} day${view.daysSinceContact === 1 ? "" : "s"} ago.`);
+  }
+  if (notes[0]) parts.push(`Latest note: "${notes[0].text}"`);
+  return parts.join(" ");
+}
+
+function attentionBriefing(advisorId: string): string {
+  const items = attentionItems(advisorId);
+  if (!items.length) return "Nothing urgent right now — your roster is in good shape.";
+  const top = items.slice(0, 5).map((i) => `• ${i.clientName}: ${i.text}`).join("\n");
+  return `${items.length} item${items.length === 1 ? "" : "s"} need your attention:\n${top}`;
+}
+
+function scheduleBriefing(advisorId: string): string {
+  const now = Date.now();
+  const upcoming = Sessions.forAdvisor(advisorId).filter((s) => s.status === "scheduled" && s.when > now);
+  if (!upcoming.length) return "No sessions scheduled. Head to the Schedule page to book one.";
+  const lines = upcoming.slice(0, 5).map((s) => {
+    const c = Users.byId(s.clientId);
+    return `• ${fmtDateTime(s.when)} — ${c?.name ?? "Client"}: ${s.topic}`;
+  });
+  return `Upcoming sessions:\n${lines.join("\n")}`;
+}
+
+function overdueBriefing(advisorId: string): string {
+  const now = Date.now();
+  const overdue = Reminders.forAdvisor(advisorId).filter((r) => !r.done && r.dueAt < now);
+  if (!overdue.length) return "No overdue follow-ups — you're caught up.";
+  const lines = overdue.slice(0, 5).map((r) => {
+    const c = Users.byId(r.clientId);
+    return `• ${c?.name ?? "Client"}: ${r.text} (due ${fmtDate(r.dueAt)})`;
+  });
+  return `${overdue.length} overdue follow-up${overdue.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
+}
+
+function actionBriefing(advisorId: string): string {
+  const views = clientViews(advisorId);
+  const items = attentionItems(advisorId);
+  if (!views.length) return "Add a client to get tailored suggestions.";
+  const lines: string[] = [];
+  if (items.length) lines.push(`Start with: ${items[0].text} (${items[0].clientName}).`);
+  const lowest = views.filter((v) => typeof v.readiness === "number").sort((a, b) => (a.readiness ?? 0) - (b.readiness ?? 0))[0];
+  if (lowest && (lowest.readiness ?? 100) < 70) {
+    lines.push(`${lowest.user.name} has the lowest readiness score (${lowest.readiness}/100) — a coaching session would help most.`);
+  }
+  const noInterview = views.filter((v) => v.interviewCount === 0);
+  if (noInterview.length) {
+    lines.push(`${noInterview.length} client${noInterview.length === 1 ? "" : "s"} haven't done a mock interview yet — nudge them to start.`);
+  }
+  if (!lines.length) lines.push("Your roster looks solid — no urgent actions right now.");
+  return lines.join(" ");
+}
+
+interface ReadinessProjection {
+  trend: "improving" | "declining" | "flat" | "ready" | "insufficient-data";
+  latestScore: number | null;
+  slopePerSession: number | null;
+  sessionsToReady: number | null;
+  estimatedDate: number | null;
+}
+
+/**
+ * Projects when a client will cross READY_THRESHOLD by fitting a straight
+ * line through their completed-interview scores over time. Needs at least
+ * two scored interviews — one point has no slope to extrapolate from.
+ */
+function predictReadiness(clientId: string): ReadinessProjection {
+  const history = Interviews.forClient(clientId)
+    .filter((i) => i.completedAt && i.analysis)
+    .sort((a, b) => a.completedAt! - b.completedAt!);
+
+  if (!history.length) {
+    return { trend: "insufficient-data", latestScore: null, slopePerSession: null, sessionsToReady: null, estimatedDate: null };
+  }
+
+  const latest = history[history.length - 1].analysis!.readinessScore;
+  if (latest >= READY_THRESHOLD) {
+    return { trend: "ready", latestScore: latest, slopePerSession: null, sessionsToReady: 0, estimatedDate: history[history.length - 1].completedAt! };
+  }
+  if (history.length === 1) {
+    return { trend: "insufficient-data", latestScore: latest, slopePerSession: null, sessionsToReady: null, estimatedDate: null };
+  }
+
+  const first = history[0].analysis!.readinessScore;
+  const span = history.length - 1;
+  const slope = (latest - first) / span;
+  const avgGapMs = (history[history.length - 1].completedAt! - history[0].completedAt!) / span;
+
+  if (slope <= 0) {
+    return { trend: slope < 0 ? "declining" : "flat", latestScore: latest, slopePerSession: slope, sessionsToReady: null, estimatedDate: null };
+  }
+  const sessionsToReady = Math.ceil((READY_THRESHOLD - latest) / slope);
+  const estimatedDate = Date.now() + sessionsToReady * avgGapMs;
+  return { trend: "improving", latestScore: latest, slopePerSession: slope, sessionsToReady, estimatedDate };
+}
+
+function readinessPredictionLine(client: User): string {
+  const p = predictReadiness(client.id);
+  switch (p.trend) {
+    case "insufficient-data":
+      return p.latestScore == null
+        ? `${client.name} hasn't completed a mock interview yet — no readiness data to project from.`
+        : `${client.name} has only one scored interview (${p.latestScore}/100) — need at least one more to project a trend.`;
+    case "ready":
+      return `${client.name} is already interview-ready (${p.latestScore}/100).`;
+    case "declining":
+      return `${client.name}'s readiness is trending down (now ${p.latestScore}/100, ${p.slopePerSession!.toFixed(1)} pts/session) — needs a change in coaching approach, not just more reps.`;
+    case "flat":
+      return `${client.name}'s readiness has plateaued at ${p.latestScore}/100 across recent sessions — try a different coaching angle before the next one.`;
+    case "improving": {
+      const sessionsTxt = `${p.sessionsToReady} more session${p.sessionsToReady === 1 ? "" : "s"}`;
+      const dateTxt = p.estimatedDate ? ` (around ${fmtDate(p.estimatedDate)} at the current pace)` : "";
+      return `${client.name} is trending up (${p.slopePerSession!.toFixed(1)} pts/session, now ${p.latestScore}/100) — projected interview-ready in ${sessionsTxt}${dateTxt}.`;
+    }
+  }
+}
+
+function soonestToReadyBriefing(advisorId: string): string {
+  const projections = Users.clientsOf(advisorId)
+    .map((client) => ({ client, p: predictReadiness(client.id) }))
+    .filter((x) => x.p.trend === "improving" && x.p.sessionsToReady != null)
+    .sort((a, b) => (a.p.sessionsToReady ?? 99) - (b.p.sessionsToReady ?? 99));
+
+  if (!projections.length) {
+    return "No clients currently have a clear improving trend to project from — log more completed mock interviews to enable predictions.";
+  }
+  const lines = projections
+    .slice(0, 5)
+    .map(
+      ({ client, p }) =>
+        `• ${client.name}: ready in ~${p.sessionsToReady} session${p.sessionsToReady === 1 ? "" : "s"}${p.estimatedDate ? ` (around ${fmtDate(p.estimatedDate)})` : ""}`
+    );
+  return `Closest to interview-ready:\n${lines.join("\n")}`;
+}
+
+function rosterBriefing(advisorId: string): string {
+  const stats = rosterStats(advisorId);
+  return (
+    `You have ${stats.total} client${stats.total === 1 ? "" : "s"}. ` +
+    `${stats.ready} are interview-ready, ${stats.needsWork} need work` +
+    (stats.avgReadiness != null ? `, average readiness is ${stats.avgReadiness}/100.` : ".") +
+    ` ${stats.openReminders} open reminder${stats.openReminders === 1 ? "" : "s"} and ${stats.upcomingSessions} upcoming session${stats.upcomingSessions === 1 ? "" : "s"}.`
+  );
 }
