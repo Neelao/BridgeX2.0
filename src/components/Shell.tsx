@@ -147,16 +147,6 @@ function AccountMenu({ name, role }: { name: string; role: string }) {
             <p className="truncate text-sm font-semibold text-ink-900">{name}</p>
             <p className="text-xs capitalize text-muted">{role} account</p>
           </div>
-          {role === "client" && (
-            <Link
-              to="/client/profile"
-              onClick={() => setOpen(false)}
-              className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-paper-2"
-            >
-              <Icon name="file" size={16} className="text-muted" />
-              My profile
-            </Link>
-          )}
           <button
             onClick={() => {
               setOpen(false);
