@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useScribe } from "@elevenlabs/react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { Companies, Interviews, Profiles, uid } from "../../lib/db";
-import { aiDelay, analyzeInterview, buildQuestionFlow, isInterviewComplete } from "../../lib/ai";
+import { aiDelay, analyzeInterview, buildQuestionFlow, generatePersonalizedQuestions, isInterviewComplete } from "../../lib/ai";
 import { useStore } from "../../lib/useStore";
 import type { ChatMessage, Interview } from "../../lib/types";
 import { PageHeader } from "../../components/Shell";
@@ -18,22 +19,14 @@ const SpeechRecognitionCtor =
 type Phase = "setup" | "call" | "finishing";
 type TurnState = "ai-speaking" | "listening" | "processing" | "done";
 
-/** Load voices, waiting for the async Chrome event if needed */
-function loadVoices(): Promise<SpeechSynthesisVoice[]> {
-  return new Promise((resolve) => {
-    if (!synth) { resolve([]); return; }
-    const v = synth.getVoices();
-    if (v.length > 0) { resolve(v); return; }
-    synth.addEventListener("voiceschanged", () => resolve(synth.getVoices()), { once: true });
-  });
-}
-
 export default function InterviewPage() {
   const { user } = useAuth();
   const clientId = user!.id;
   const navigate = useNavigate();
 
   const companies = useStore(() => Companies.forClient(clientId), [clientId]);
+  const profile = useStore(() => Profiles.forClient(clientId), [clientId]);
+  const hasCv = !!profile?.cvText?.trim();
   const [targetId, setTargetId] = useState("");
   const [phase, setPhase] = useState<Phase>("setup");
   const [turnState, setTurnState] = useState<TurnState>("ai-speaking");
@@ -42,7 +35,13 @@ export default function InterviewPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [speechAvailable] = useState(() => !!synth && !!SpeechRecognitionCtor);
   const [camError, setCamError] = useState(false);
+  const [micError, setMicError] = useState(false);
+  const [micStatusText, setMicStatusText] = useState("");
+  const [voiceStatusText, setVoiceStatusText] = useState("");
   const [userSpeaking, setUserSpeaking] = useState(false);
+  const [useElevenLabs, setUseElevenLabs] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [expression, setExpression] = useState("neutral");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -54,17 +53,91 @@ export default function InterviewPage() {
   const interviewId = useRef(uid("iv"));
   const startedAt = useRef(Date.now());
   const messagesRef = useRef<ChatMessage[]>([]);
+  const endedRef = useRef(false);
+  const elevenAnswerRef = useRef("");
+  const aiAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const scribe = useScribe({
+    modelId: "scribe_v2_realtime",
+    onPartialTranscript: (data) => {
+      const text = data.text ?? "";
+      setLiveTranscript(`${elevenAnswerRef.current} ${text}`.trim());
+      setUserSpeaking(Boolean(text.trim()));
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => setUserSpeaking(false), 1500);
+    },
+    onCommittedTranscript: (data) => {
+      const text = data.text?.trim();
+      if (!text) return;
+      elevenAnswerRef.current = `${elevenAnswerRef.current} ${text}`.trim();
+      setLiveTranscript(elevenAnswerRef.current);
+      setUserSpeaking(true);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => setUserSpeaking(false), 1500);
+    },
+  });
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
-  /* ── camera only (no audio track — avoids mic conflict with SpeechRecognition) ── */
-  async function startCamera() {
+  useEffect(() => {
+    if (phase !== "call") return;
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [phase]);
+
+  /* swap the avatar's expression based on what's happening — kept slow/subtle, not flickery */
+  useEffect(() => {
+    if (turnState === "ai-speaking") {
+      setExpression("talking");
+      return;
+    }
+    if (turnState === "listening") {
+      setExpression(userSpeaking ? "nodding" : "listening");
+      return;
+    }
+    if (turnState === "processing") {
+      setExpression("thinking");
+      return;
+    }
+    if (turnState === "done") {
+      setExpression("smile");
+      return;
+    }
+  }, [turnState, userSpeaking]);
+
+  /* ── request camera and microphone up front, but independently. If the mic
+     permission fails, the user's camera should still appear in the call. The
+     mic track is released immediately; ElevenLabs opens the live mic again only
+     when it is the user's turn to answer. ── */
+  async function startDevices() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      const stream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({ video: true, audio: false }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("camera-timeout")), 4000)),
+      ]);
       streamRef.current = stream;
+      setCamError(false);
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch {
       setCamError(true);
+    }
+
+    try {
+      const micStream = await Promise.race([
+        navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("microphone-timeout")), 4000)),
+      ]);
+      micStream.getTracks().forEach((track) => track.stop());
+      setMicError(false);
+    } catch {
+      setMicError(true);
+      setMicStatusText("Microphone permission was not granted.");
     }
   }
 
@@ -73,58 +146,92 @@ export default function InterviewPage() {
     streamRef.current = null;
   }
 
-  /* ── TTS ── */
-  async function speak(text: string): Promise<void> {
-    if (!synth) return;
+  function speakWithBrowserVoice(text: string): Promise<void> {
+    if (!synth) return Promise.resolve();
     synth.cancel();
-
-    const voices = await loadVoices();
-    const preferred =
-      voices.find((v) => /samantha|google uk english female|zira|aria|jenny/i.test(v.name)) ??
-      voices.find((v) => v.lang.startsWith("en-")) ??
-      voices[0];
-
     return new Promise((resolve) => {
       const utt = new SpeechSynthesisUtterance(text);
-      utt.rate = 0.9;
-      utt.pitch = 1.05;
-      if (preferred) utt.voice = preferred;
       utt.onend = () => resolve();
       utt.onerror = () => resolve();
       synth!.speak(utt);
     });
   }
 
-  /* ── STT: continuous — resolved on "Done speaking" click or silence ── */
+  async function speak(text: string): Promise<void> {
+    try {
+      setVoiceStatusText("");
+      aiAudioRef.current?.pause();
+      aiAudioRef.current = null;
+      const response = await fetch("/api/elevenlabs/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error ?? "ElevenLabs voice failed");
+      }
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      aiAudioRef.current = audio;
+
+      await new Promise<void>((resolve) => {
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(audioUrl);
+          resolve();
+        };
+        audio.play().catch(() => resolve());
+      });
+    } catch (error) {
+      setVoiceStatusText(error instanceof Error ? error.message : "ElevenLabs voice failed");
+      await speakWithBrowserVoice(text);
+    }
+  }
+
+  /* ── STT: continuous — resolved on "Submit answer" click or silence ── */
+  async function fetchElevenLabsToken() {
+    const response = await fetch("/api/elevenlabs/scribe-token");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "ElevenLabs token request failed");
+    return typeof data === "string" ? data : data.token ?? data.value ?? data.single_use_token;
+  }
+
   function startListening(): Promise<string> {
     accumulatedRef.current = "";
+    elevenAnswerRef.current = "";
     setLiveTranscript("");
     setUserSpeaking(false);
 
-    return new Promise<string>((resolve) => {
+    return new Promise<string>(async (resolve) => {
       resolveListenRef.current = resolve;
-      if (!SpeechRecognitionCtor) { resolve(""); return; }
-
-      const rec = new SpeechRecognitionCtor();
-      recognizerRef.current = rec;
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = "en-US";
-
-      rec.onresult = (e: any) => {
-        let interim = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const t = e.results[i][0].transcript;
-          if (e.results[i].isFinal) accumulatedRef.current += t + " ";
-          else interim += t;
+      try {
+        const token = await fetchElevenLabsToken();
+        if (token) {
+          setUseElevenLabs(true);
+          setMicError(false);
+          setMicStatusText("Opening microphone...");
+          await scribe.connect({
+            token,
+            microphone: {
+              echoCancellation: true,
+              noiseSuppression: true,
+            },
+          });
+          setMicStatusText("");
+          return;
         }
-        setLiveTranscript(accumulatedRef.current + interim);
+      } catch (error) {
+        setUseElevenLabs(false);
+        setMicStatusText(error instanceof Error ? error.message : "ElevenLabs microphone connection failed.");
+      }
 
-        /* mark user as speaking; clear after 1.5 s of silence */
-        setUserSpeaking(true);
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = setTimeout(() => setUserSpeaking(false), 1500);
-      };
+      if (!SpeechRecognitionCtor) { resolve(""); return; }
 
       const finish = () => {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -134,58 +241,157 @@ export default function InterviewPage() {
           resolveListenRef.current = null;
         }
       };
-      rec.onend = finish;
-      rec.onerror = finish;
-      rec.start();
+
+      /* re-entrant: "no-speech"/"network"/"aborted" and a start() that throws are all
+         transient — a recognizer from the previous turn hadn't fully released yet, or
+         Chrome's speech service hiccuped. Retry a few times before giving up so a brief
+         glitch doesn't just silently skip the question. */
+      let retries = 0;
+      const startRecognizer = () => {
+        if (!resolveListenRef.current) return;
+        const rec = new SpeechRecognitionCtor();
+        recognizerRef.current = rec;
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.lang = "en-US";
+
+        rec.onstart = () => setMicError(false);
+
+        rec.onresult = (e: any) => {
+          if (recognizerRef.current !== rec) return;
+          let interim = "";
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const t = e.results[i][0].transcript;
+            if (e.results[i].isFinal) accumulatedRef.current += t + " ";
+            else interim += t;
+          }
+          setLiveTranscript(accumulatedRef.current + interim);
+
+          /* mark user as speaking; clear after 1.5 s of silence */
+          setUserSpeaking(true);
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = setTimeout(() => setUserSpeaking(false), 1500);
+        };
+
+        const retry = () => {
+          if (retries >= 5) { finish(); return; }
+          retries++;
+          setTimeout(startRecognizer, 250);
+        };
+
+        rec.onend = () => {
+          if (recognizerRef.current !== rec) return;
+          finish();
+        };
+        rec.onerror = (e: any) => {
+          if (recognizerRef.current !== rec) return;
+          if (e.error === "no-speech" || e.error === "network" || e.error === "aborted") {
+            retry();
+            return;
+          }
+          if (e.error === "not-allowed" || e.error === "service-not-allowed") setMicError(true);
+          finish();
+        };
+        try {
+          rec.start();
+        } catch {
+          retry();
+        }
+      };
+
+      startRecognizer();
     });
   }
 
   function submitAnswer() {
+    if (useElevenLabs && scribe.isConnected) {
+      const answer = elevenAnswerRef.current.trim() || liveTranscript.trim();
+      scribe.disconnect();
+      setUserSpeaking(false);
+      if (resolveListenRef.current) {
+        resolveListenRef.current(answer);
+        resolveListenRef.current = null;
+      }
+      return;
+    }
+
     recognizerRef.current?.stop();
+    /* .stop() should fire onend shortly after, but if the recognizer/device is in a bad
+       state it can simply never fire — force the turn to move on instead of staying stuck */
+    setTimeout(() => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      setUserSpeaking(false);
+      if (resolveListenRef.current) {
+        resolveListenRef.current(accumulatedRef.current.trim());
+        resolveListenRef.current = null;
+      }
+    }, 800);
   }
 
-  /* ── interview loop ── */
+  /* ── interview loop — bails out at every step once endedRef is set, so
+     ending the call can't let the loop keep talking in the background ── */
   const runTurn = useCallback(async (qIndex: number, flow: string[]) => {
+    if (endedRef.current) return;
     const question = flow[qIndex];
     setMessages((m) => [...m, { id: uid("m"), role: "interviewer", text: question, at: Date.now() }]);
     setCurrentQ(qIndex);
     setTurnState("ai-speaking");
     await speak(question);
+    if (endedRef.current) return;
 
     setTurnState("listening");
     const answer = await startListening();
+    if (endedRef.current) return;
     setLiveTranscript("");
 
     const text = answer.trim() || "(no response)";
     setMessages((m) => [...m, { id: uid("m"), role: "candidate", text, at: Date.now() }]);
     setTurnState("processing");
     await aiDelay(500);
+    if (endedRef.current) return;
 
     const nextQ = qIndex + 1;
     if (!isInterviewComplete(nextQ)) {
       await runTurn(nextQ, flow);
     } else {
+      setTurnState("ai-speaking");
+      await speak("That's everything I needed — thank you so much for your time today, it was great speaking with you. Let's get your results ready.");
+      if (endedRef.current) return;
       setTurnState("done");
     }
   }, []);
 
   async function beginCall() {
+    /* Warm up the speech engine synchronously inside this click — Chrome can
+       silently drop the very first real utterance unless one fires during a user gesture */
+    if (synth) { synth.cancel(); synth.speak(new SpeechSynthesisUtterance(" ")); }
+
+    /* release any stream left over from a previous attempt so the camera device
+       isn't still "busy" when we ask for it again */
+    stopCamera();
+    setCamError(false);
+    setElapsedSec(0);
+    endedRef.current = false;
     const target = companies.find((c) => c.id === targetId);
-    const flow = buildQuestionFlow(target);
+    const flow = profile?.cvText?.trim()
+      ? generatePersonalizedQuestions(profile, target)
+      : buildQuestionFlow(target);
     flowRef.current = flow;
     interviewId.current = uid("iv");
     startedAt.current = Date.now();
     setMessages([]);
     setCurrentQ(0);
     setPhase("call");
-    await startCamera();
-    await aiDelay(600);
+    await startDevices();
     await runTurn(0, flow);
   }
 
   async function endInterview() {
+    endedRef.current = true;
     synth?.cancel();
+    aiAudioRef.current?.pause();
     recognizerRef.current?.stop();
+    if (scribe.isConnected) scribe.disconnect();
     resolveListenRef.current?.("");
     resolveListenRef.current = null;
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -210,8 +416,11 @@ export default function InterviewPage() {
 
   useEffect(() => {
     return () => {
+      endedRef.current = true;
       synth?.cancel();
+      aiAudioRef.current?.pause();
       recognizerRef.current?.stop();
+      if (scribe.isConnected) scribe.disconnect();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       stopCamera();
     };
@@ -235,6 +444,12 @@ export default function InterviewPage() {
                 Your camera opens on the call screen. The AI interviewer asks questions out loud
                 and speech recognition will capture your answers live.
               </p>
+              {hasCv && (
+                <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-steel-300">
+                  <Icon name="sparkle" size={13} />
+                  Questions are personalized to your uploaded CV.
+                </p>
+              )}
             </div>
             <div className="mt-10 grid grid-cols-2 gap-3">
               {["Camera required", "Microphone required", "Natural AI voice", "Private scoring"].map((label) => (
@@ -326,17 +541,38 @@ export default function InterviewPage() {
   const isSpeaking = turnState === "ai-speaking";
   const isListening = turnState === "listening";
 
+  const mm = String(Math.floor(elapsedSec / 60)).padStart(2, "0");
+  const ss = String(elapsedSec % 60).padStart(2, "0");
+
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-black">
 
-      {/* Top progress bar */}
-      <div className="flex h-14 shrink-0 items-center justify-between px-5">
-        <div className="flex items-center gap-3 text-white/60">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-clay-400" />
-          <span className="text-sm font-medium">
-            Question {Math.min(currentQ + 1, totalQuestions)} of {totalQuestions}
-          </span>
+      {/* Header */}
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 bg-[#0b0f1a] px-5">
+        <div className="flex items-center gap-2">
+          <Icon name="shield" size={18} className="text-steel-400" />
+          <span className="text-sm font-bold text-white">BridgeX</span>
         </div>
+        <span className="text-sm font-medium text-white/80">AI Mock Interview</span>
+        <div className="flex items-center gap-4">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-white/60">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-clay-500" />
+            {mm}:{ss}
+          </span>
+          <button
+            onClick={endInterview}
+            className="rounded-lg border border-clay-500/60 px-3 py-1.5 text-xs font-semibold text-clay-400 transition hover:bg-clay-500/10"
+          >
+            End Interview
+          </button>
+        </div>
+      </div>
+
+      {/* Question progress */}
+      <div className="flex h-9 shrink-0 items-center justify-between px-5">
+        <span className="text-xs font-medium text-white/50">
+          Question {Math.min(currentQ + 1, totalQuestions)} of {totalQuestions}
+        </span>
         <div className="flex h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
           <div
             className="h-full rounded-full bg-steel-400 transition-all duration-700"
@@ -350,9 +586,9 @@ export default function InterviewPage() {
 
         {/* ── Left: AI interviewer — full panel, looks like a video call ── */}
         <div className="relative flex flex-1 overflow-hidden bg-[#0d1420]">
-          {/* Full-panel photo */}
+          {/* Full-panel photo — swaps expression based on what's happening */}
           <img
-            src="/ai-interviewer.png"
+            src={`/interviewer-guy/${expression}.png`}
             alt="AI Interviewer"
             className="absolute inset-0 h-full w-full object-cover object-center"
           />
@@ -365,6 +601,12 @@ export default function InterviewPage() {
             <div className="pointer-events-none absolute inset-0 border-[3px] border-steel-400/80" />
           )}
 
+          {/* Identity tag */}
+          <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1.5 backdrop-blur">
+            <span className="h-2 w-2 rounded-full bg-sage-500" />
+            <span className="text-xs font-semibold text-white">Alex · AI Interviewer</span>
+          </div>
+
           {/* Speaking badge */}
           {isSpeaking && (
             <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full bg-steel-600/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
@@ -373,9 +615,15 @@ export default function InterviewPage() {
             </div>
           )}
 
+          {voiceStatusText && (
+            <div className="absolute right-4 top-14 max-w-sm rounded-xl bg-black/70 px-4 py-3 text-xs font-medium leading-relaxed text-white/80 backdrop-blur">
+              ElevenLabs voice fallback: {voiceStatusText}
+            </div>
+          )}
+
           {/* Audio bars while AI speaks */}
           {isSpeaking && (
-            <div className="absolute bottom-[4.5rem] left-5 flex items-end gap-[3px]">
+            <div className="absolute bottom-32 left-5 flex items-end gap-[3px]">
               {[3, 7, 10, 8, 5, 9, 6, 8, 4].map((h, i) => (
                 <span
                   key={i}
@@ -390,16 +638,12 @@ export default function InterviewPage() {
             </div>
           )}
 
-          {/* Name / title */}
-          <div className="absolute bottom-6 left-5">
-            <p className="text-sm font-semibold text-white">Alex</p>
-            <p className="text-xs text-white/50">AI Interviewer · BridgeX</p>
-          </div>
-
-          {/* Current question text */}
+          {/* Current question text — large, high-contrast, always readable */}
           {currentQuestion && (
-            <div className="absolute bottom-16 left-5 right-5">
-              <p className="text-[13px] leading-relaxed text-white/80">{currentQuestion}</p>
+            <div className="absolute bottom-6 left-5 right-5 flex">
+              <div className="max-w-md rounded-xl bg-black/55 px-4 py-3 backdrop-blur">
+                <p className="text-sm font-semibold leading-snug text-white">{currentQuestion}</p>
+              </div>
             </div>
           )}
         </div>
@@ -417,13 +661,17 @@ export default function InterviewPage() {
               autoPlay
               muted
               playsInline
-              className="h-full w-full object-cover [transform:scaleX(-1)]"
+              className="h-full w-full object-cover [transform:scaleX(-1)] transition-[filter] duration-150"
+              style={{ filter: userSpeaking && isListening ? "brightness(1.15) saturate(1.1)" : undefined }}
             />
           )}
 
-          {/* Green border when you're speaking */}
+          {/* Lights up when you're speaking */}
           {userSpeaking && isListening && (
-            <div className="pointer-events-none absolute inset-0 border-[3px] border-sage-500/80" />
+            <div
+              className="pointer-events-none absolute inset-0 border-[3px] border-sage-400 transition-all duration-150"
+              style={{ boxShadow: "inset 0 0 0 3px rgba(34,197,94,0.5), 0 0 40px 8px rgba(34,197,94,0.35)" }}
+            />
           )}
 
           {/* Your name tag */}
@@ -443,7 +691,13 @@ export default function InterviewPage() {
                   userSpeaking ? "animate-pulse bg-white" : "bg-white/40"
                 }`}
               />
-              {userSpeaking ? "Speaking…" : "Listening…"}
+              {userSpeaking ? "I'm speaking…" : "Mic on — answer now"}
+            </div>
+          )}
+
+          {isListening && micStatusText && (
+            <div className="absolute right-4 top-16 max-w-xs rounded-xl bg-black/70 px-4 py-3 text-xs font-medium leading-relaxed text-white/80 backdrop-blur">
+              {micStatusText}
             </div>
           )}
 
@@ -488,7 +742,7 @@ export default function InterviewPage() {
       </div>
 
       {/* Bottom controls */}
-      <div className="flex h-20 shrink-0 items-center justify-center gap-6">
+      <div className="flex h-20 shrink-0 items-center justify-center gap-5">
         {turnState === "done" ? (
           <button
             onClick={endInterview}
@@ -499,27 +753,29 @@ export default function InterviewPage() {
           </button>
         ) : (
           <>
-            <button
-              onClick={endInterview}
-              className="flex flex-col items-center gap-1.5 rounded-2xl bg-clay-600 px-5 py-3 text-white transition hover:bg-clay-500"
+            <span
+              title={micError ? "Microphone blocked" : "Microphone"}
+              className={`flex h-11 w-11 items-center justify-center rounded-full ${
+                micError ? "bg-clay-600/30 text-clay-400" : "bg-white/10 text-white/60"
+              }`}
             >
-              <Icon name="phoneOff" size={22} strokeWidth={1.5} />
-              <span className="text-[11px] font-medium">End interview</span>
-            </button>
+              <Icon name={micError ? "micOff" : "mic"} size={18} strokeWidth={1.5} />
+            </span>
 
             <p className="min-w-[160px] text-center text-xs text-white/35">
               {isSpeaking && "Alex is speaking…"}
-              {isListening && (userSpeaking ? "We can hear you — keep going" : "Speak your answer")}
+              {isListening && micError && (micStatusText || "Mic blocked — allow microphone access in your browser and retry")}
+              {isListening && !micError && (userSpeaking ? "You're speaking — keep going" : "Speak your answer")}
               {turnState === "processing" && "Moving on…"}
             </p>
 
             {isListening && (
               <button
                 onClick={submitAnswer}
-                className="flex flex-col items-center gap-1.5 rounded-2xl bg-sage-600 px-5 py-3 text-white transition hover:bg-sage-500"
+                title="Submit answer"
+                className="flex h-12 w-12 items-center justify-center rounded-full bg-sage-600 text-white transition hover:bg-sage-500"
               >
-                <Icon name="check" size={22} strokeWidth={2} />
-                <span className="text-[11px] font-medium">Done speaking</span>
+                <Icon name="check" size={20} strokeWidth={2} />
               </button>
             )}
           </>

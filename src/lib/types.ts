@@ -54,6 +54,7 @@ export interface ClientProfile {
   yearsExperience: number;
   cvText: string; // pasted / "uploaded" CV content
   cvFileName?: string;
+  portfolioUrl?: string;
   updatedAt: number;
 }
 
@@ -104,6 +105,15 @@ export interface InterviewAnalysis {
   resumeSuggestions: string[];
 }
 
+export interface DirectMessage {
+  id: string;
+  advisorId: string;
+  clientId: string;
+  fromRole: "advisor" | "client";
+  text: string;
+  at: number;
+}
+
 export interface CandidateSummary {
   background: string;
   careerGoals: string;
@@ -141,6 +151,7 @@ export interface MatchResult {
   score: number; // 0-100
   reasons: string[];
 }
+
 
 export interface Session {
   id: string;

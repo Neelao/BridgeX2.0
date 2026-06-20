@@ -1,6 +1,7 @@
 import type {
   AdvisorChatMessage,
   ClientProfile,
+  DirectMessage,
   Interview,
   Note,
   Opportunity,
@@ -28,6 +29,7 @@ const KEYS = {
   reminders: "bx_reminders",
   notes: "bx_notes",
   resumes: "bx_resumes",
+  messages: "bx_messages",
   opportunities: "bx_opportunities",
   referrals: "bx_referrals",
   advisorChats: "bx_advisor_chats",
@@ -197,6 +199,22 @@ export const Resumes = {
     rows.push(resume);
     Resumes.save(rows);
     return resume;
+  },
+};
+
+/* ---------------- Direct messages ---------------- */
+export const Messages = {
+  all: () => read<DirectMessage[]>(KEYS.messages, []),
+  save: (rows: DirectMessage[]) => write(KEYS.messages, rows),
+  forConversation: (advisorId: string, clientId: string) =>
+    Messages.all()
+      .filter((m) => m.advisorId === advisorId && m.clientId === clientId)
+      .sort((a, b) => a.at - b.at),
+  add: (msg: DirectMessage) => {
+    const rows = Messages.all();
+    rows.push(msg);
+    Messages.save(rows);
+    return msg;
   },
 };
 

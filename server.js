@@ -1,5 +1,6 @@
 import http from "node:http";
 import fs from "node:fs";
+import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 
 const PORT = Number(process.env.API_PORT ?? 8787);
 
@@ -29,11 +30,18 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function readBody(req) {
+function readJson(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (error) {
+        reject(error);
+      }
+    });
     req.on("error", reject);
   });
 }
@@ -46,59 +54,65 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") return json(res, 200, { ok: true });
 
   try {
-    if (req.method === "GET" && req.url === "/api/config/status") {
-      return json(res, 200, {
-        tavusReady: missing(["TAVUS_API_KEY", "TAVUS_REPLICA_ID", "TAVUS_PERSONA_ID"]).length === 0,
-        deepgramReady: missing(["DEEPGRAM_API_KEY"]).length === 0,
-      });
-    }
-
-    if (req.method === "POST" && req.url === "/api/tavus/conversation") {
-      const missingKeys = missing(["TAVUS_API_KEY", "TAVUS_REPLICA_ID", "TAVUS_PERSONA_ID"]);
+    if (req.method === "GET" && req.url === "/api/elevenlabs/scribe-token") {
+      const missingKeys = missing(["ELEVENLABS_API_KEY"]);
       if (missingKeys.length) {
-        return json(res, 400, {
-          error: `Missing ${missingKeys.join(", ")} in .env`,
-        });
+        return json(res, 400, { error: "Missing ELEVENLABS_API_KEY in .env" });
       }
 
-      const response = await fetch("https://tavusapi.com/v2/conversations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": process.env.TAVUS_API_KEY,
-        },
-        body: JSON.stringify({
-          replica_id: process.env.TAVUS_REPLICA_ID,
-          persona_id: process.env.TAVUS_PERSONA_ID,
-          conversation_name: "BridgeX Mock Interview",
-        }),
+      const elevenlabs = new ElevenLabsClient({
+        apiKey: process.env.ELEVENLABS_API_KEY,
       });
-
-      const data = await response.json().catch(() => ({}));
-      return json(res, response.ok ? 200 : response.status, data);
+      const token = await elevenlabs.tokens.singleUse.create("realtime_scribe");
+      return json(res, 200, token);
     }
 
-    if (req.method === "POST" && req.url === "/api/deepgram/transcribe") {
-      const missingKeys = missing(["DEEPGRAM_API_KEY"]);
+    if (req.method === "POST" && req.url === "/api/elevenlabs/tts") {
+      const missingKeys = missing(["ELEVENLABS_API_KEY", "ELEVENLABS_VOICE_ID"]);
       if (missingKeys.length) {
-        return json(res, 400, { error: "Missing DEEPGRAM_API_KEY in .env" });
+        return json(res, 400, { error: `Missing ${missingKeys.join(", ")} in .env` });
       }
 
-      const audio = await readBody(req);
-      if (!audio.length) return json(res, 400, { error: "No audio received" });
+      const body = await readJson(req);
+      const text = typeof body.text === "string" ? body.text.trim() : "";
+      if (!text) return json(res, 400, { error: "Missing text" });
 
-      const response = await fetch("https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&language=en-US", {
-        method: "POST",
-        headers: {
-          Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`,
-          "Content-Type": req.headers["content-type"] || "audio/webm",
+      const response = await fetch(
+        `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}?output_format=mp3_44100_128`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "xi-api-key": process.env.ELEVENLABS_API_KEY,
+          },
+          body: JSON.stringify({
+            text,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+              stability: 0.45,
+              similarity_boost: 0.8,
+              style: 0.35,
+              use_speaker_boost: true,
+            },
+          }),
         },
-        body: audio,
-      });
+      );
 
-      const data = await response.json().catch(() => ({}));
-      const transcript = data?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-      return json(res, response.ok ? 200 : response.status, { transcript, raw: data });
+      if (!response.ok) {
+        const errorText = await response.text();
+        return json(res, response.status, { error: errorText || "ElevenLabs text-to-speech failed" });
+      }
+
+      const audio = Buffer.from(await response.arrayBuffer());
+      res.writeHead(200, {
+        "Content-Type": "audio/mpeg",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Cache-Control": "no-store",
+      });
+      res.end(audio);
+      return;
     }
 
     return json(res, 404, { error: "Not found" });
