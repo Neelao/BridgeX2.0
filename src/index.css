@@ -81,9 +81,10 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
-/* Soft dusty rose → mauve navbar (premium, light) */
+/* Light blue navbar */
 .nav-surface {
-  background-image: linear-gradient(100deg, #ede1e4 0%, #e4d1d5 52%, #d6bfc4 100%);
+  background-image: none;
+  background-color: #d1e5f4;
 }
 
 /* Subtle entrance animation for grids/cards */
