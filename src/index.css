@@ -70,8 +70,43 @@ body {
   font-feature-settings: "cv01", "cv03", "ss01";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  background: var(--color-paper);
+  background-color: #edeff5;
   color: var(--color-ink-900);
+}
+
+/* Dynamic aurora — soft drifting brand-coloured blobs behind the whole app */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 38% at 18% 22%, rgba(99, 152, 232, 0.24), transparent 70%),
+    radial-gradient(34% 34% at 82% 14%, rgba(168, 146, 230, 0.22), transparent 70%),
+    radial-gradient(44% 44% at 78% 82%, rgba(104, 196, 205, 0.20), transparent 70%),
+    radial-gradient(40% 40% at 24% 88%, rgba(206, 165, 214, 0.18), transparent 70%);
+  filter: blur(30px) saturate(1.05);
+  animation: aurora 30s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes aurora {
+  0% {
+    transform: translate3d(-1.5%, -1%, 0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(1.5%, 1.5%, 0) scale(1.08) rotate(1deg);
+  }
+  100% {
+    transform: translate3d(0%, 2.5%, 0) scale(1.04) rotate(2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
 }
 
 /* Tighter optical tracking on large display text */
@@ -84,10 +119,12 @@ h2 {
   font-variant-numeric: tabular-nums;
 }
 
-/* Light blue navbar */
+/* Reflective light-blue navbar (glossy sheen + diagonal gradient) */
 .nav-surface {
-  background-image: none;
-  background-color: #d1e5f4;
+  background-color: #d3e6f6;
+  background-image:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%),
+    linear-gradient(105deg, #eaf4fd 0%, #d4e7f6 48%, #bdd8f1 100%);
 }
 
 /* Subtle entrance animation for grids/cards */
