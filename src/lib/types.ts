@@ -112,3 +112,10 @@ export interface Reminder {
   done: boolean;
   source: "manual" | "ai";
 }
+
+export interface AdvisorChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  at: number;
+}

@@ -1,4 +1,5 @@
 import type {
+  AdvisorChatMessage,
   ClientProfile,
   Interview,
   Note,
@@ -25,6 +26,7 @@ const KEYS = {
   reminders: "bx_reminders",
   notes: "bx_notes",
   resumes: "bx_resumes",
+  advisorChats: "bx_advisor_chats",
   currentUser: "bx_current_user",
   seeded: "bx_seeded_v2",
 } as const;
@@ -191,6 +193,24 @@ export const Resumes = {
     rows.push(resume);
     Resumes.save(rows);
     return resume;
+  },
+};
+
+/* ---------------- Advisor assistant chat ---------------- */
+export const AdvisorChats = {
+  all: () => read<Record<string, AdvisorChatMessage[]>>(KEYS.advisorChats, {}),
+  save: (rows: Record<string, AdvisorChatMessage[]>) => write(KEYS.advisorChats, rows),
+  forAdvisor: (advisorId: string) => AdvisorChats.all()[advisorId] ?? [],
+  append: (advisorId: string, message: AdvisorChatMessage) => {
+    const rows = AdvisorChats.all();
+    rows[advisorId] = [...(rows[advisorId] ?? []), message];
+    AdvisorChats.save(rows);
+    return rows[advisorId];
+  },
+  clear: (advisorId: string) => {
+    const rows = AdvisorChats.all();
+    delete rows[advisorId];
+    AdvisorChats.save(rows);
   },
 };
 
