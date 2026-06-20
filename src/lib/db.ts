@@ -1,6 +1,7 @@
 import type {
   AdvisorChatMessage,
   ClientProfile,
+  DirectMessage,
   Interview,
   Note,
   Opportunity,
@@ -31,8 +32,9 @@ const KEYS = {
   opportunities: "bx_opportunities",
   referrals: "bx_referrals",
   advisorChats: "bx_advisor_chats",
+  messages: "bx_messages",
   currentUser: "bx_current_user",
-  seeded: "bx_seeded_v4",
+  seeded: "bx_seeded_v5",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -227,6 +229,26 @@ export const Referrals = {
     return referral;
   },
   remove: (id: string) => Referrals.save(Referrals.all().filter((r) => r.id !== id)),
+};
+
+/* ---------------- Advisor <-> client direct messages ---------------- */
+export const Messages = {
+  all: () => read<DirectMessage[]>(KEYS.messages, []),
+  save: (rows: DirectMessage[]) => write(KEYS.messages, rows),
+  forClient: (clientId: string) =>
+    Messages.all()
+      .filter((m) => m.clientId === clientId)
+      .sort((a, b) => a.at - b.at),
+  add: (message: DirectMessage) => {
+    const rows = Messages.all();
+    rows.push(message);
+    Messages.save(rows);
+    return message;
+  },
+  lastFor: (clientId: string) => {
+    const rows = Messages.forClient(clientId);
+    return rows[rows.length - 1];
+  },
 };
 
 /* ---------------- Advisor assistant chat ---------------- */

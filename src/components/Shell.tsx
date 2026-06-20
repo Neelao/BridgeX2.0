@@ -75,10 +75,42 @@ export function Shell({ nav, children }: { nav: NavItem[]; children: ReactNode }
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
+      <div className="flex">
+        {isAdvisor && <QuickRail />}
+        <div className="min-w-0 flex-1">
+          <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">{children}</main>
+        </div>
+      </div>
 
       {isAdvisor && user && <AdvisorAssistant advisorId={user.id} />}
     </div>
+  );
+}
+
+const QUICK_ACTIONS: { to: string; label: string; icon: IconName }[] = [
+  { to: "/advisor/clients?new=1", label: "Add client", icon: "plus" },
+  { to: "/advisor/schedule?new=1", label: "New session", icon: "calendar" },
+  { to: "/advisor/messages", label: "Messages", icon: "send" },
+];
+
+function QuickRail() {
+  return (
+    <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] shrink-0 p-3 lg:block">
+      <div className="flex w-[60px] flex-col items-center gap-1.5 rounded-2xl border border-line bg-surface py-3 shadow-[0_1px_2px_rgba(20,22,30,0.04)]">
+        {QUICK_ACTIONS.map((a) => (
+          <Link
+            key={a.label}
+            to={a.to}
+            className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-ink-600 transition hover:bg-paper-2 hover:text-ink-900"
+          >
+            <Icon name={a.icon} size={20} />
+            <span className="pointer-events-none absolute left-full z-50 ml-3 whitespace-nowrap rounded-lg bg-ink-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+              {a.label}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -117,10 +149,20 @@ function AccountMenu({ name, role }: { name: string; role: string }) {
           </div>
           <button
             onClick={() => {
+              setOpen(false);
+              navigate(role === "advisor" ? "/advisor/profile" : "/client/profile");
+            }}
+            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-paper-2"
+          >
+            <Icon name="settings" size={16} className="text-muted" />
+            Profile
+          </button>
+          <button
+            onClick={() => {
               signOut();
               navigate("/");
             }}
-            className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-paper-2"
+            className="flex w-full items-center gap-2.5 border-t border-line px-4 py-2.5 text-left text-sm font-medium text-ink-700 hover:bg-paper-2"
           >
             <Icon name="logout" size={16} className="text-muted" />
             Sign out
