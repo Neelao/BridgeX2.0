@@ -6,7 +6,8 @@ import { aiDelay, analyzeInterview, buildQuestionFlow, generatePersonalizedQuest
 import { useStore } from "../../lib/useStore";
 import type { ChatMessage, Interview } from "../../lib/types";
 import { PageHeader } from "../../components/Shell";
-import { Icon, Select } from "../../components/ui";
+import { Button, Icon, Select } from "../../components/ui";
+import { Modal } from "../../components/Modal";
 
 /* ─── Browser speech APIs ─── */
 const synth = typeof window !== "undefined" ? window.speechSynthesis : null;
@@ -39,6 +40,7 @@ export default function InterviewPage() {
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [expression, setExpression] = useState("neutral");
+  const [showRecordedPrompt, setShowRecordedPrompt] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -281,6 +283,7 @@ export default function InterviewPage() {
       await speak("That's everything I needed — thank you so much for your time today, it was great speaking with you. Let's get your results ready.");
       if (endedRef.current) return;
       setTurnState("done");
+      setShowRecordedPrompt(true);
     }
   }, []);
 
@@ -694,6 +697,23 @@ export default function InterviewPage() {
           </>
         )}
       </div>
+
+      <Modal open={showRecordedPrompt} onClose={() => setShowRecordedPrompt(false)} title="Interview complete">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-steel-50 text-steel-600">
+              <Icon name="camera" size={20} />
+            </span>
+            <p className="text-sm leading-relaxed text-ink-700">
+              This session was <strong className="font-semibold text-ink-900">recorded</strong> and saved to your files.
+              You can revisit the recording and transcript anytime from your interview history.
+            </p>
+          </div>
+          <Button icon="arrowRight" className="w-full" onClick={endInterview}>
+            View my results
+          </Button>
+        </div>
+      </Modal>
 
       <style>{`
         @keyframes audioBars {
