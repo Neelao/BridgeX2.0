@@ -31,7 +31,8 @@ export function ClientCard({ view, index = 0 }: { view: ClientView; index?: numb
               {READINESS_META[status].short}
             </span>
           ) : (
-            <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-ink-700">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-ink-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-steel-500" />
               Joined {fmtDate(user.createdAt)}
             </span>
           )}

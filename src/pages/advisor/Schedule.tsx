@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
 import { Reminders, Sessions, Users, uid } from "../../lib/db";
@@ -25,6 +25,16 @@ export default function Schedule() {
 
   const [selectedDay, setSelectedDay] = useState<number>(startOfDay(Date.now()));
   const [modalOpen, setModalOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Open the "New session" modal directly when arriving via the sidebar shortcut.
+  useEffect(() => {
+    if (searchParams.get("new") !== null) {
+      setModalOpen(true);
+      searchParams.delete("new");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const now = Date.now();
   const events: CalendarEvent[] = [
@@ -202,11 +212,7 @@ function NewSessionModal({ open, advisorId, day, onClose }: { open: boolean; adv
         {clients.length === 0 ? (
           <p className="rounded-xl bg-paper-2 px-4 py-3 text-sm text-muted">You have no clients yet. Add a client first.</p>
         ) : (
-          <Select label="Client" value={clientId || clients[0]?.id} onChange={(e) => setClientId(e.target.value)}>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </Select>
+          <ClientCombobox clients={clients} value={clientId || clients[0]?.id} onChange={setClientId} />
         )}
         <Input label="Topic" value={topic} onChange={(e) => setTopic(e.target.value)} />
         <Input label="Date & time" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
@@ -221,5 +227,77 @@ function NewSessionModal({ open, advisorId, day, onClose }: { open: boolean; adv
         </div>
       </form>
     </Modal>
+  );
+}
+
+function ClientCombobox({
+  clients,
+  value,
+  onChange,
+}: {
+  clients: ReturnType<typeof Users.clientsOf>;
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = clients.find((c) => c.id === value);
+  const filtered = clients.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <span className="mb-1.5 block text-[13px] font-medium text-ink-800">Client</span>
+      <div className="relative">
+        <Icon name="search" size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+        <input
+          value={open ? query : selected?.name ?? ""}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            setOpen(true);
+            setQuery("");
+          }}
+          placeholder="Search client name…"
+          className="w-full rounded-lg border border-line-strong bg-surface py-2.5 pl-10 pr-3.5 text-sm text-ink-900 outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
+        />
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-line bg-surface py-1 shadow-lg shadow-black/10 scroll-thin">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-sm text-muted">No clients match.</p>
+          ) : (
+            filtered.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => {
+                  onChange(c.id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className="flex w-full items-center justify-between px-3.5 py-2 text-left text-sm text-ink-800 hover:bg-paper-2"
+              >
+                {c.name}
+                {c.id === value && <Icon name="check" size={15} className="text-steel-600" strokeWidth={2.2} />}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }

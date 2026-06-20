@@ -35,6 +35,24 @@ export interface Note {
   shared: boolean; // visible to the client as advisor feedback
 }
 
+export interface MessageAttachment {
+  kind: "image" | "audio" | "file";
+  name: string;
+  mime: string;
+  size: number;
+  dataUrl: string; // base64 data URL (front-end demo — stored in localStorage)
+}
+
+export interface DirectMessage {
+  id: string;
+  advisorId: string;
+  clientId: string; // the advisor<->this client thread
+  from: "advisor" | "client";
+  text: string;
+  at: number;
+  attachment?: MessageAttachment;
+}
+
 export interface Resume {
   clientId: string;
   headline: string;
@@ -103,15 +121,6 @@ export interface InterviewAnalysis {
   gaps: string[];
   coachingActions: string[]; // advisor-facing follow-up actions
   resumeSuggestions: string[];
-}
-
-export interface DirectMessage {
-  id: string;
-  advisorId: string;
-  clientId: string;
-  fromRole: "advisor" | "client";
-  text: string;
-  at: number;
 }
 
 export interface CandidateSummary {

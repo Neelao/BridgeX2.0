@@ -19,6 +19,8 @@ const KIND_META: Record<Opportunity["kind"], { label: string; icon: IconName }> 
   internship: { label: "Internship", icon: "target" },
 };
 
+type SortKey = "name" | "role" | "type";
+
 export default function ReferralsPage() {
   const { user } = useAuth();
   const advisorId = user!.id;
@@ -26,6 +28,22 @@ export default function ReferralsPage() {
   const opportunities = useStore(() => Opportunities.all(), []);
   const referrals = useStore(() => Referrals.forAdvisor(advisorId), [advisorId]);
   const clients = useStore(() => Users.clientsOf(advisorId), [advisorId]);
+
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("name");
+  const [expanded, setExpanded] = useState(false);
+
+  const filtered = opportunities
+    .filter((o) =>
+      `${o.org} ${o.role} ${o.location} ${o.skills.join(" ")} ${KIND_META[o.kind].label}`.toLowerCase().includes(query.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sortBy === "type") return a.kind.localeCompare(b.kind) || a.org.localeCompare(b.org);
+      if (sortBy === "role") return a.role.localeCompare(b.role);
+      return a.org.localeCompare(b.org);
+    });
+
+  const shown = expanded ? filtered : filtered.slice(0, 3);
 
   return (
     <div>
@@ -50,15 +68,51 @@ export default function ReferralsPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Opportunities</h2>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Icon name="search" size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                placeholder="Search opportunities…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full rounded-full border border-line-strong bg-surface py-2.5 pl-11 pr-4 text-sm outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
+              />
+            </div>
+            <div className="relative shrink-0">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+                className="w-full appearance-none rounded-full border border-line-strong bg-surface py-2.5 pl-4 pr-9 text-sm text-ink-800 outline-none transition focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
+              >
+                <option value="name">Sort: Company</option>
+                <option value="role">Sort: Role</option>
+                <option value="type">Sort: Type</option>
+              </select>
+              <Icon name="chevronDown" size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted" />
+            </div>
+          </div>
+
           {opportunities.length === 0 ? (
             <EmptyState title="No opportunities" body="Partner opportunities will appear here." />
+          ) : filtered.length === 0 ? (
+            <EmptyState title="No matches" body="No opportunities match your search." />
           ) : (
-            <div className="space-y-5">
-              {opportunities.map((o) => (
-                <OpportunityCard key={o.id} opportunity={o} advisorId={advisorId} clients={clients} referrals={referrals} />
-              ))}
-            </div>
+            <>
+              <div className="space-y-5">
+                {shown.map((o) => (
+                  <OpportunityCard key={o.id} opportunity={o} advisorId={advisorId} clients={clients} referrals={referrals} />
+                ))}
+              </div>
+              {filtered.length > 3 && (
+                <button
+                  onClick={() => setExpanded((v) => !v)}
+                  className="mx-auto mt-4 flex items-center gap-1.5 rounded-full border border-line-strong bg-surface px-4 py-2 text-[13px] font-medium text-ink-700 transition hover:bg-paper-2"
+                >
+                  {expanded ? "View less" : `View ${filtered.length - 3} more`}
+                  <Icon name={expanded ? "chevronDown" : "chevronRight"} size={14} className={expanded ? "rotate-180" : ""} />
+                </button>
+              )}
+            </>
           )}
         </div>
 

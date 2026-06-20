@@ -47,7 +47,7 @@ export default function AdvisorPortal() {
       id: uid("msg"),
       advisorId,
       clientId,
-      fromRole: "client",
+      from: "client",
       text,
       at: Date.now(),
     });
@@ -252,7 +252,7 @@ function ChatBubble({
   clientName: string;
   advisorName: string;
 }) {
-  const isAdvisor = message.fromRole === "advisor";
+  const isAdvisor = message.from === "advisor";
   return (
     <div className={`flex gap-2.5 ${isAdvisor ? "" : "flex-row-reverse"}`}>
       {isAdvisor ? (

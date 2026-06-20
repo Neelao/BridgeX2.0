@@ -30,17 +30,20 @@
   /* Semantic tones */
   --color-sage-50: #e7f5ec;
   --color-sage-100: #d2edda;
+  --color-sage-200: #b6e1c2;
   --color-sage-500: #3f9d6a;
   --color-sage-600: #2f8557;
   --color-sage-700: #266b46;
 
   --color-gold-50: #fbf1dd;
   --color-gold-100: #f4e2bb;
+  --color-gold-200: #ecd2a0;
   --color-gold-500: #c08a2e;
   --color-gold-600: #9c6f22;
 
   --color-clay-50: #fbe7e6;
   --color-clay-100: #f5cfcd;
+  --color-clay-200: #efb6b1;
   --color-clay-500: #d05c52;
   --color-clay-600: #b1463e;
 
