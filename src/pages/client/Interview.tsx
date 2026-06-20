@@ -553,9 +553,9 @@ export default function InterviewPage() {
 
           {/* Current question text — large, high-contrast, always readable */}
           {currentQuestion && (
-            <div className="absolute bottom-6 left-5 right-5 flex">
-              <div className="max-w-md rounded-xl bg-black/55 px-4 py-3 backdrop-blur">
-                <p className="text-sm font-semibold leading-snug text-white">{currentQuestion}</p>
+            <div className="absolute bottom-5 left-4 right-4">
+              <div className="scroll-thin max-h-[32vh] overflow-y-auto rounded-xl bg-black/55 px-4 py-3 backdrop-blur">
+                <p className="text-sm font-semibold leading-relaxed text-white">{currentQuestion}</p>
               </div>
             </div>
           )}
