@@ -4,7 +4,7 @@ import { useStore } from "../../lib/useStore";
 import { Companies, Interviews, Notes, Opportunities, Profiles, Referrals, Sessions, Users } from "../../lib/db";
 import { fmtDate, fmtDateTime, relative } from "../../lib/format";
 import { PageHeader } from "../../components/Shell";
-import { Button, Card, CardHeader, Icon, Meter, Pill, ReadinessTag, ReferralTag, ScoreRing } from "../../components/ui";
+import { Button, Card, CardHeader, Icon, Meter, ReadinessTag, ReferralTag, ScoreRing } from "../../components/ui";
 
 export default function ClientHome() {
   const { user } = useAuth();

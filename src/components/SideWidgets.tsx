@@ -1,8 +1,8 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "../lib/useStore";
 import { Reminders, Sessions, Users } from "../lib/db";
 import { activityFeed, topMovers } from "../lib/selectors";
-import { tipOfDay } from "../lib/ai";
 import { fmtTime, relative } from "../lib/format";
 import { Avatar, Card, CardHeader, Icon } from "./ui";
 import type { IconName } from "./Icon";
@@ -94,7 +94,9 @@ const ACTIVITY_META: Record<string, { icon: IconName; dot: string }> = {
 };
 
 export function ActivityFeedCard({ advisorId }: { advisorId: string }) {
-  const items = useStore(() => activityFeed(advisorId), [advisorId]);
+  const items = useStore(() => activityFeed(advisorId, 30), [advisorId]);
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? items : items.slice(0, 5);
   return (
     <Card>
       <CardHeader title="Recent activity" icon="clock" />
@@ -103,7 +105,7 @@ export function ActivityFeedCard({ advisorId }: { advisorId: string }) {
           <p className="py-3 text-center text-sm text-muted">No activity yet.</p>
         ) : (
           <div className="space-y-3">
-            {items.map((it) => {
+            {shown.map((it) => {
               const meta = ACTIVITY_META[it.kind];
               return (
                 <Link key={it.id} to={`/advisor/clients/${it.clientId}`} className="flex items-start gap-2.5 rounded-lg px-1 py-1 hover:bg-paper-2">
@@ -121,46 +123,15 @@ export function ActivityFeedCard({ advisorId }: { advisorId: string }) {
             })}
           </div>
         )}
-      </div>
-    </Card>
-  );
-}
-
-/* ---------- Quick actions ---------- */
-export function QuickActionsCard() {
-  const actions: { to: string; label: string; icon: IconName }[] = [
-    { to: "/advisor/clients", label: "Add client", icon: "plus" },
-    { to: "/advisor/schedule", label: "New session", icon: "calendar" },
-    { to: "/advisor/referrals", label: "Referrals", icon: "briefcase" },
-    { to: "/advisor/clients", label: "Review roster", icon: "users" },
-  ];
-  return (
-    <Card>
-      <CardHeader title="Quick actions" />
-      <div className="grid grid-cols-2 gap-2 p-3">
-        {actions.map((a) => (
-          <Link key={a.label} to={a.to} className="flex items-center gap-2 rounded-xl border border-line px-3 py-2.5 text-[13px] font-medium text-ink-800 transition hover:border-line-strong hover:bg-paper-2">
-            <Icon name={a.icon} size={15} className="text-steel-600" />
-            {a.label}
-          </Link>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-/* ---------- AI coaching tip ---------- */
-export function CoachingTipCard() {
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex items-start gap-3 p-5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-steel-50 text-steel-600">
-          <Icon name="sparkle" size={17} />
-        </span>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Coaching tip</p>
-          <p className="mt-1 text-sm leading-relaxed text-ink-800">{tipOfDay()}</p>
-        </div>
+        {items.length > 5 && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-medium text-steel-600 transition hover:bg-paper-2"
+          >
+            {expanded ? "View less" : `View ${items.length - 5} more`}
+            <Icon name={expanded ? "chevronDown" : "chevronRight"} size={14} className={expanded ? "rotate-180" : ""} />
+          </button>
+        )}
       </div>
     </Card>
   );

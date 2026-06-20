@@ -18,6 +18,18 @@ import type { ChatMessage, Interview, Opportunity, TargetCompany, User } from ".
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 
+// Clients who have an earlier, weaker mock interview → they show as "Improving".
+const IMPROVING = new Set(["cli_amir", "cli_sam"]);
+
+// Deliberately thin answers so the earlier interview scores low.
+const WEAK_ANSWERS = [
+  "Um, I work in tech I guess.",
+  "I did a project once. It was okay.",
+  "There was a problem but I can't really remember the details.",
+  "Not sure what my strengths are. Maybe everything is fine.",
+  "I just want a job, this company seems good.",
+];
+
 /** Seed a realistic demo dataset the first time the app runs in a browser. */
 export function ensureSeeded() {
   if (localStorage.getItem(KEYS.seeded)) return;
@@ -179,6 +191,29 @@ export function ensureSeeded() {
     };
     interview.analysis = analyzeInterview(messages, profile, company);
     Interviews.upsert(interview);
+
+    // Give some clients an earlier, weaker mock so their readiness visibly
+    // climbs — these surface in the "Improving" filter.
+    if (IMPROVING.has(c.id)) {
+      const priorMsgs: ChatMessage[] = [];
+      let pt = now - 14 * DAY;
+      WEAK_ANSWERS.forEach((ans, i) => {
+        priorMsgs.push({ id: uid("m"), role: "interviewer", text: questions[i], at: pt });
+        pt += 60 * 1000;
+        priorMsgs.push({ id: uid("m"), role: "candidate", text: ans, at: pt });
+        pt += 90 * 1000;
+      });
+      const prior: Interview = {
+        id: uid("iv"),
+        clientId: c.id,
+        targetCompanyId: company.id,
+        startedAt: now - 14 * DAY,
+        completedAt: now - 14 * DAY + 9 * 60 * 1000,
+        messages: priorMsgs,
+      };
+      prior.analysis = analyzeInterview(priorMsgs, profile, company);
+      Interviews.upsert(prior);
+    }
   }
 
   Users.save(users);
@@ -257,7 +292,7 @@ export function ensureSeeded() {
   ];
   for (const { clientId, msgs } of msgSeed) {
     for (const { text, daysAgo } of msgs) {
-      Messages.add({ id: uid("msg"), advisorId: advisor.id, clientId, fromRole: "advisor", text, at: now - daysAgo * DAY });
+      Messages.add({ id: uid("msg"), advisorId: advisor.id, clientId, from: "advisor", text, at: now - daysAgo * DAY });
     }
   }
 

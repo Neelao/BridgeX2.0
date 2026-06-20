@@ -8,7 +8,7 @@ import type { IconName } from "../../components/Icon";
 import { PageHeader } from "../../components/Shell";
 import { AiBadge, Button, Card, CardHeader, EmptyState, Icon, LinkArrow, Stat } from "../../components/ui";
 import { ClientCard } from "../../components/ClientCard";
-import { ActivityFeedCard, CoachingTipCard, QuickActionsCard, ThisWeekCard, TopMoversCard } from "../../components/SideWidgets";
+import { ActivityFeedCard, ThisWeekCard, TopMoversCard } from "../../components/SideWidgets";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -41,18 +41,13 @@ export default function Dashboard() {
           </>
         }
         subtitle="Here's what needs your attention today."
-        action={
-          <Link to="/advisor/clients">
-            <Button icon="plus">Add client</Button>
-          </Link>
-        }
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label="Active clients" value={stats.total} sub={`${stats.upcomingSessions} sessions upcoming`} />
         <Stat
           label="Avg. readiness"
-          value={stats.avgReadiness !== null ? `${stats.avgReadiness}` : "—"}
+          value={stats.avgReadiness !== null ? `${stats.avgReadiness}%` : "—"}
           sub="across scored clients"
         />
         <Stat label="Interview-ready" value={stats.ready} sub="scored 80 and above" />
@@ -66,16 +61,22 @@ export default function Dashboard() {
           const now = Date.now();
           const glance = [
             { label: "New candidates", n: views.filter((v) => now - v.user.createdAt <= 7 * DAY).length, sub: "joined this week", to: "/advisor/clients", tone: "steel" as const },
-            { label: "Needs attention", n: views.filter((v) => { const s = segmentsOf(v); return s.includes("struggling") || s.includes("inactive") || v.user.readinessStatus === "not_ready"; }).length, sub: "struggling / inactive", to: "/advisor/clients", tone: "clay" as const },
-            { label: "High performers", n: views.filter((v) => segmentsOf(v).includes("referral-ready")).length, sub: "referral-ready", to: "/advisor/referrals", tone: "sage" as const },
-            { label: "Follow-up tasks", n: stats.openReminders + stats.upcomingSessions, sub: "reminders + sessions", to: "/advisor/schedule", tone: "gold" as const },
+            { label: "Needs attention", n: views.filter((v) => { const s = segmentsOf(v); return s.includes("struggling") || s.includes("inactive") || v.user.readinessStatus === "not_ready"; }).length, sub: "struggling / inactive", to: "/advisor/clients?segment=struggling", tone: "clay" as const },
+            { label: "High performers", n: views.filter((v) => segmentsOf(v).includes("referral-ready")).length, sub: "referral-ready", to: "/advisor/clients?segment=referral-ready", tone: "sage" as const },
+            { label: "Follow-up tasks", n: stats.openReminders, sub: "follow-ups due", to: "/advisor/schedule", tone: "gold" as const },
           ];
           const dot: Record<string, string> = { steel: "bg-steel-500", clay: "bg-clay-500", sage: "bg-sage-500", gold: "bg-gold-500" };
+          const fill: Record<string, string> = {
+            steel: "border-steel-200",
+            clay: "border-clay-200",
+            sage: "border-sage-200",
+            gold: "border-gold-200",
+          };
           return glance.map((g) => (
-            <Link key={g.label} to={g.to} className="group rounded-2xl border border-line bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(20,22,30,0.04)] transition hover:border-line-strong hover:shadow-md">
+            <Link key={g.label} to={g.to} className={`group rounded-2xl border bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(20,22,30,0.04)] transition hover:shadow-md ${fill[g.tone]}`}>
               <div className="flex items-center gap-2">
                 <span className={`h-1.5 w-1.5 rounded-full ${dot[g.tone]}`} />
-                <p className="text-[12px] font-medium text-muted">{g.label}</p>
+                <p className="text-[12px] font-medium text-ink-600">{g.label}</p>
               </div>
               <p className="mt-1.5 text-[28px] font-semibold leading-none tnum text-ink-900">{g.n}</p>
               <p className="mt-1.5 flex items-center gap-1 text-xs text-muted">
@@ -173,8 +174,6 @@ export default function Dashboard() {
 
           <TopMoversCard advisorId={advisorId} />
           <ActivityFeedCard advisorId={advisorId} />
-          <QuickActionsCard />
-          <CoachingTipCard />
         </div>
       </div>
     </div>
