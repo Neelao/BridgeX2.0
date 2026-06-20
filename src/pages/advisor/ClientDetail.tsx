@@ -3,9 +3,9 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
 import { Companies, Interviews, Messages, Notes, Profiles, Reminders, Resumes, Sessions, Users, uid } from "../../lib/db";
-import { aiDelay, summarizeCompany } from "../../lib/ai";
-import { fmtDate, fmtDateTime, relative } from "../../lib/format";
-import type { TargetCompany, User } from "../../lib/types";
+import { aiDelay, candidateSummary, summarizeCompany } from "../../lib/ai";
+import { fmtDate, fmtDateTime, relative, READINESS_META } from "../../lib/format";
+import type { NoteKind, ReadinessStatus, TargetCompany, User } from "../../lib/types";
 import { useToast } from "../../components/Toast";
 import { PageHeader, BackLink } from "../../components/Shell";
 import {
@@ -17,7 +17,9 @@ import {
   EmptyState,
   Icon,
   Input,
+  Meter,
   Pill,
+  ReadinessTag,
   ScoreRing,
   Select,
   Textarea,
@@ -53,8 +55,10 @@ export default function ClientDetail() {
     );
   }
 
-  const latest = interviews.find((i) => i.analysis);
+  const scored = interviews.filter((i) => i.analysis);
+  const latest = scored[0];
   const analysis = latest?.analysis;
+  const summary = candidateSummary(client, profile, analysis, companies);
 
   return (
     <div>
@@ -62,7 +66,12 @@ export default function ClientDetail() {
 
       <PageHeader
         eyebrow={`${client.targetRole ?? "No target role"} · ${client.email}`}
-        title={client.name}
+        title={
+          <span className="flex flex-wrap items-center gap-3">
+            {client.name}
+            {client.readinessStatus && <ReadinessTag status={client.readinessStatus} />}
+          </span>
+        }
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" icon="calendar" onClick={() => setScheduleOpen(true)}>
@@ -78,9 +87,41 @@ export default function ClientDetail() {
         }
       />
 
+      {/* Readiness approval gate */}
+      <ApprovalBar client={client} readiness={analysis?.readinessScore} />
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left column */}
         <div className="space-y-6 lg:col-span-2">
+          {/* AI candidate summary */}
+          <Card>
+            <CardHeader title="AI candidate summary" icon="sparkle" action={<AiBadge />} />
+            <div className="grid gap-4 p-5 sm:grid-cols-2">
+              <SummaryBlock label="Background" body={summary.background} />
+              <SummaryBlock label="Career goals" body={summary.careerGoals} />
+              <SummaryListBlock label="Strengths" tone="sage" icon="check" items={summary.strengths} />
+              <SummaryListBlock label="Weaknesses" tone="gold" icon="alert" items={summary.weaknesses} />
+              <div className="sm:col-span-2">
+                <SummaryListBlock label="Areas needing support" tone="steel" icon="target" items={summary.supportAreas} />
+              </div>
+            </div>
+          </Card>
+
+          {/* Interview performance analytics */}
+          {analysis && (
+            <Card>
+              <CardHeader title="Interview performance analytics" icon="chart" action={<AiBadge />} />
+              <div className="p-5">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <DimScore label="Communication" value={analysis.communication} />
+                  <DimScore label="Confidence" value={analysis.confidence} />
+                  <DimScore label="Technical" value={analysis.technical} />
+                </div>
+                <TrendStrip interviews={scored} />
+              </div>
+            </Card>
+          )}
+
           {/* Readiness summary */}
           <Card>
             <CardHeader title="Readiness summary" icon="chart" action={<AiBadge />} />
@@ -284,43 +325,173 @@ export default function ClientDetail() {
   );
 }
 
+const STATUS_ORDER: ReadinessStatus[] = ["not_ready", "coaching", "employer_ready"];
+
+function ApprovalBar({ client, readiness }: { client: User; readiness?: number }) {
+  const toast = useToast();
+  const current = client.readinessStatus;
+  const aiSuggestion: ReadinessStatus =
+    typeof readiness !== "number" ? "not_ready" : readiness >= 80 ? "employer_ready" : readiness >= 60 ? "coaching" : "not_ready";
+
+  function set(status: ReadinessStatus) {
+    Users.update(client.id, { readinessStatus: status });
+    toast(`Marked ${READINESS_META[status].label.toLowerCase()}`);
+  }
+
+  return (
+    <Card className="mb-6">
+      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Readiness approval</p>
+          <p className="mt-1 text-sm text-ink-700">
+            Final call is yours.{" "}
+            {typeof readiness === "number"
+              ? <>AI suggests <span className="font-semibold text-ink-900">{READINESS_META[aiSuggestion].label}</span> ({readiness}/100).</>
+              : "No interview yet — complete one for an AI suggestion."}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {STATUS_ORDER.map((s) => {
+            const m = READINESS_META[s];
+            const active = current === s;
+            return (
+              <button
+                key={s}
+                onClick={() => set(s)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
+                  active ? "border-transparent text-white" : "border-line-strong bg-surface text-ink-700 hover:bg-paper-2"
+                }`}
+                style={active ? { background: m.color } : undefined}
+              >
+                <span className="h-2 w-2 rounded-full" style={{ background: active ? "#fff" : m.color }} />
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function SummaryBlock({ label, body }: { label: string; body: string }) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">{label}</p>
+      <p className="text-sm leading-relaxed text-ink-800">{body}</p>
+    </div>
+  );
+}
+
+function SummaryListBlock({ label, tone, icon, items }: { label: string; tone: "sage" | "gold" | "steel"; icon: "check" | "alert" | "target"; items: string[] }) {
+  const color = tone === "sage" ? "text-sage-600" : tone === "gold" ? "text-gold-600" : "text-steel-600";
+  return (
+    <div>
+      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">{label}</p>
+      <ul className="space-y-1.5">
+        {items.map((it, i) => (
+          <li key={i} className="flex gap-2 text-sm text-ink-800">
+            <Icon name={icon} size={14} className={`mt-0.5 shrink-0 ${color}`} strokeWidth={2} />
+            {it}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function DimScore({ label, value }: { label: string; value: number }) {
+  const tone = value >= 75 ? "sage" : value >= 55 ? "gold" : "clay";
+  return (
+    <div className="rounded-xl border border-line p-4">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">{label}</p>
+        <p className="text-lg font-bold tnum text-ink-900">{value}</p>
+      </div>
+      <div className="mt-2"><Meter value={value} tone={tone} /></div>
+    </div>
+  );
+}
+
+function TrendStrip({ interviews }: { interviews: ReturnType<typeof Interviews.forClient> }) {
+  const history = [...interviews].reverse(); // oldest → newest
+  if (history.length < 1) return null;
+  const max = 100;
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted">Improvement trend · {history.length} interview{history.length > 1 ? "s" : ""}</p>
+      <div className="flex items-end gap-2">
+        {history.map((iv) => {
+          const sc = iv.analysis!.readinessScore;
+          const tone = sc >= 80 ? "bg-sage-500" : sc >= 60 ? "bg-gold-500" : "bg-clay-500";
+          return (
+            <div key={iv.id} className="flex flex-1 flex-col items-center gap-1.5">
+              <span className="text-[11px] font-semibold tnum text-ink-700">{sc}</span>
+              <div className="flex h-24 w-full items-end rounded-md bg-paper-2">
+                <div className={`w-full rounded-md ${tone} transition-all`} style={{ height: `${(sc / max) * 100}%` }} />
+              </div>
+              <span className="text-[10px] text-muted">{fmtDate(iv.completedAt ?? iv.startedAt).replace(/,.*/, "")}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function NotesCard({ advisorId, clientId, notes }: { advisorId: string; clientId: string; notes: ReturnType<typeof Notes.forClient> }) {
   const toast = useToast();
   const [text, setText] = useState("");
+  const [kind, setKind] = useState<NoteKind>("coaching");
+  const [shared, setShared] = useState(false);
 
   function add() {
     const t = text.trim();
     if (!t) return;
-    Notes.add({ id: uid("note"), advisorId, clientId, text: t, at: Date.now() });
+    Notes.add({ id: uid("note"), advisorId, clientId, text: t, at: Date.now(), kind, shared });
     Users.touchContact(clientId);
     setText("");
-    toast("Note saved · contact logged");
+    setShared(false);
+    toast(shared ? "Feedback shared with client" : "Note saved · contact logged");
   }
+
+  const KIND_LABEL: Record<NoteKind, string> = { coaching: "Coaching", resume: "Resume", interview: "Interview", career: "Career advice" };
 
   return (
     <Card>
-      <CardHeader title="Coaching notes" icon="edit" />
+      <CardHeader title="Coaching notes & feedback" icon="edit" />
       <div className="p-4">
-        <div className="flex items-end gap-2">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={2}
-            placeholder="Log a touchpoint or coaching note…"
-            className="scroll-thin flex-1 resize-none rounded-xl border border-line-strong px-3 py-2 text-sm outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
-          />
-          <Button size="sm" onClick={add} disabled={!text.trim()}>Log</Button>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={2}
+          placeholder="Log a touchpoint, or write feedback to share with the client…"
+          className="scroll-thin w-full resize-none rounded-xl border border-line-strong px-3 py-2 text-sm outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Select value={kind} onChange={(e) => setKind(e.target.value as NoteKind)} className="!w-auto !py-1.5 text-xs">
+            {(["coaching", "resume", "interview", "career"] as NoteKind[]).map((k) => (
+              <option key={k} value={k}>{KIND_LABEL[k]}</option>
+            ))}
+          </Select>
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-ink-700">
+            <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} className="h-4 w-4 rounded border-line-strong text-steel-500 focus:ring-steel-200" />
+            Share with client
+          </label>
+          <Button size="sm" className="ml-auto" onClick={add} disabled={!text.trim()}>Log</Button>
         </div>
-        <div className="mt-3 space-y-3">
+        <div className="mt-4 space-y-3">
           {notes.length === 0 ? (
             <p className="py-2 text-center text-xs text-muted">No notes yet. Logging a note marks the client as contacted.</p>
           ) : (
             notes.map((n) => (
               <div key={n.id} className="flex gap-2.5">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-steel-400" />
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.shared ? "bg-sage-500" : "bg-steel-400"}`} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-ink-800">{n.text}</p>
-                  <p className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                  <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
+                    <span className="rounded-full bg-paper-2 px-2 py-0.5 font-medium text-ink-600">{KIND_LABEL[n.kind ?? "coaching"]}</span>
+                    {n.shared && <Pill tone="sage">Shared</Pill>}
                     {relative(n.at)}
                     <button onClick={() => Notes.remove(n.id)} className="hover:text-clay-500">Delete</button>
                   </p>
@@ -406,11 +577,16 @@ function ManageClientModal({ open, client, onClose, onArchived }: { open: boolea
   const toast = useToast();
   const [name, setName] = useState(client.name);
   const [targetRole, setTargetRole] = useState(client.targetRole ?? "");
+  const [careerInterests, setCareerInterests] = useState(client.careerInterests ?? "");
   const [newPassword, setNewPassword] = useState<string | null>(null);
 
   function saveDetails(e: React.FormEvent) {
     e.preventDefault();
-    Users.update(client.id, { name: name.trim() || client.name, targetRole: targetRole.trim() || undefined });
+    Users.update(client.id, {
+      name: name.trim() || client.name,
+      targetRole: targetRole.trim() || undefined,
+      careerInterests: careerInterests.trim() || undefined,
+    });
     toast("Client details updated");
     onClose();
   }
@@ -434,6 +610,7 @@ function ManageClientModal({ open, client, onClose, onArchived }: { open: boolea
       <form onSubmit={saveDetails} className="space-y-4">
         <Input label="Full name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input label="Target role" value={targetRole} onChange={(e) => setTargetRole(e.target.value)} placeholder="e.g. Frontend Engineer" />
+        <Input label="Career interests" value={careerInterests} onChange={(e) => setCareerInterests(e.target.value)} placeholder="e.g. Fintech, remote, startups" />
         <Button type="submit" className="w-full">Save details</Button>
       </form>
 

@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
-import { Companies, Interviews, Profiles, Sessions, Users } from "../../lib/db";
-import { fmtDateTime, relative } from "../../lib/format";
+import { Companies, Interviews, Notes, Opportunities, Profiles, Referrals, Sessions, Users } from "../../lib/db";
+import { fmtDate, fmtDateTime, relative } from "../../lib/format";
 import { PageHeader } from "../../components/Shell";
-import { Button, Card, CardHeader, Icon, Meter, ScoreRing } from "../../components/ui";
+import { Button, Card, CardHeader, Icon, Meter, Pill, ReadinessTag, ReferralTag, ScoreRing } from "../../components/ui";
 
 export default function ClientHome() {
   const { user } = useAuth();
@@ -17,7 +17,10 @@ export default function ClientHome() {
     [clientId]
   );
   const companies = useStore(() => Companies.forClient(clientId), [clientId]);
+  const feedback = useStore(() => Notes.forClient(clientId).filter((n) => n.shared), [clientId]);
+  const referrals = useStore(() => Referrals.forClient(clientId), [clientId]);
   const advisor = user!.advisorId ? Users.byId(user!.advisorId) : undefined;
+  const status = user!.readinessStatus;
 
   const hasCv = !!profile?.cvText?.trim();
   const score = latest?.analysis?.readinessScore;
@@ -76,12 +79,13 @@ export default function ClientHome() {
   return (
     <div>
       <PageHeader
-        eyebrow={
-          advisor
-            ? `Advised by ${advisor.name}${advisor.agency ? ` · ${advisor.agency}` : ""}`
-            : "Your workspace"
+        eyebrow={advisor ? `Advised by ${advisor.name}${advisor.agency ? ` · ${advisor.agency}` : ""}` : "Your workspace"}
+        title={
+          <span className="flex flex-wrap items-center gap-3">
+            Hi {user!.name.split(" ")[0]}.
+            {status && <ReadinessTag status={status} />}
+          </span>
         }
-        title={`Hi ${user!.name.split(" ")[0]}.`}
         subtitle="Practice, track your readiness, and prepare for the roles you want."
       />
 
@@ -455,6 +459,51 @@ export default function ClientHome() {
                           </Link>
                         </>
                       )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Advisor feedback + referrals */}
+      <div className="mt-6 grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader title="Feedback from your advisor" icon="edit" />
+          <div className="p-5">
+            {feedback.length === 0 ? (
+              <p className="py-3 text-center text-sm text-muted">No feedback shared yet — it'll appear here after coaching.</p>
+            ) : (
+              <div className="space-y-3.5">
+                {feedback.map((n) => (
+                  <div key={n.id} className="rounded-xl bg-paper-2 p-3.5">
+                    <p className="text-sm text-ink-800">{n.text}</p>
+                    <p className="mt-1 text-xs text-muted">{advisor?.name ?? "Advisor"} · {relative(n.at)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Your referrals" icon="briefcase" />
+          <div className="p-5">
+            {referrals.length === 0 ? (
+              <p className="py-3 text-center text-sm text-muted">When your advisor refers you to an employer, you'll see it here.</p>
+            ) : (
+              <div className="space-y-2.5">
+                {referrals.map((r) => {
+                  const opp = Opportunities.byId(r.opportunityId);
+                  return (
+                    <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl bg-paper-2 px-3.5 py-2.5">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink-800">{opp ? opp.role : "Opportunity"}</p>
+                        <p className="truncate text-xs text-muted">{opp ? `${opp.org} · ${fmtDate(r.at)}` : fmtDate(r.at)}</p>
+                      </div>
+                      <ReferralTag status={r.status} />
                     </div>
                   );
                 })}

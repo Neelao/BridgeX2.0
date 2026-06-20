@@ -1,8 +1,11 @@
 import type {
+  AdvisorChatMessage,
   ClientProfile,
   DirectMessage,
   Interview,
   Note,
+  Opportunity,
+  Referral,
   Reminder,
   Resume,
   Session,
@@ -27,8 +30,11 @@ const KEYS = {
   notes: "bx_notes",
   resumes: "bx_resumes",
   messages: "bx_messages",
+  opportunities: "bx_opportunities",
+  referrals: "bx_referrals",
+  advisorChats: "bx_advisor_chats",
   currentUser: "bx_current_user",
-  seeded: "bx_seeded_v2",
+  seeded: "bx_seeded_v4",
 } as const;
 
 function read<T>(key: string, fallback: T): T {
@@ -209,6 +215,53 @@ export const Messages = {
     rows.push(msg);
     Messages.save(rows);
     return msg;
+  },
+};
+
+/* ---------------- Employer opportunities (shared catalog) ---------------- */
+export const Opportunities = {
+  all: () => read<Opportunity[]>(KEYS.opportunities, []),
+  save: (rows: Opportunity[]) => write(KEYS.opportunities, rows),
+  byId: (id: string) => Opportunities.all().find((o) => o.id === id),
+};
+
+/* ---------------- Referrals ---------------- */
+export const Referrals = {
+  all: () => read<Referral[]>(KEYS.referrals, []),
+  save: (rows: Referral[]) => write(KEYS.referrals, rows),
+  forAdvisor: (advisorId: string) =>
+    Referrals.all()
+      .filter((r) => r.advisorId === advisorId)
+      .sort((a, b) => b.at - a.at),
+  forClient: (clientId: string) =>
+    Referrals.all()
+      .filter((r) => r.clientId === clientId)
+      .sort((a, b) => b.at - a.at),
+  forOpportunity: (opportunityId: string) => Referrals.all().filter((r) => r.opportunityId === opportunityId),
+  upsert: (referral: Referral) => {
+    const rows = Referrals.all().filter((r) => r.id !== referral.id);
+    rows.push(referral);
+    Referrals.save(rows);
+    return referral;
+  },
+  remove: (id: string) => Referrals.save(Referrals.all().filter((r) => r.id !== id)),
+};
+
+/* ---------------- Advisor assistant chat ---------------- */
+export const AdvisorChats = {
+  all: () => read<Record<string, AdvisorChatMessage[]>>(KEYS.advisorChats, {}),
+  save: (rows: Record<string, AdvisorChatMessage[]>) => write(KEYS.advisorChats, rows),
+  forAdvisor: (advisorId: string) => AdvisorChats.all()[advisorId] ?? [],
+  append: (advisorId: string, message: AdvisorChatMessage) => {
+    const rows = AdvisorChats.all();
+    rows[advisorId] = [...(rows[advisorId] ?? []), message];
+    AdvisorChats.save(rows);
+    return rows[advisorId];
+  },
+  clear: (advisorId: string) => {
+    const rows = AdvisorChats.all();
+    delete rows[advisorId];
+    AdvisorChats.save(rows);
   },
 };
 

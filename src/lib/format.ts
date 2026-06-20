@@ -42,6 +42,22 @@ export function initials(name: string): string {
     .toUpperCase();
 }
 
+import type { ReadinessStatus, ReferralStatus } from "./types";
+
+export const READINESS_META: Record<ReadinessStatus, { label: string; short: string; color: string; bg: string }> = {
+  not_ready: { label: "Not ready", short: "Not ready", color: "#95503c", bg: "#f6eae4" },
+  coaching: { label: "Needs more coaching", short: "Coaching", color: "#8c6d2c", bg: "#f6f0df" },
+  employer_ready: { label: "Employer ready", short: "Ready", color: "#2f8557", bg: "#e7f5ec" },
+};
+
+export const REFERRAL_META: Record<ReferralStatus, { label: string; color: string; bg: string }> = {
+  suggested: { label: "Suggested", color: "#54565f", bg: "#eceef3" },
+  sent: { label: "Referred", color: "#2f7fd6", bg: "#eaf3fd" },
+  interviewing: { label: "Interviewing", color: "#8c6d2c", bg: "#f6f0df" },
+  placed: { label: "Placed", color: "#2f8557", bg: "#e7f5ec" },
+  declined: { label: "Declined", color: "#95503c", bg: "#f6eae4" },
+};
+
 export function scoreBand(score: number): { label: string; color: string; bg: string } {
   if (score >= 80) return { label: "Strong fit", color: "#5c7656", bg: "#eef2ea" };
   if (score >= 60) return { label: "Developing", color: "#8c6d2c", bg: "#f6f0df" };

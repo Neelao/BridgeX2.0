@@ -1,13 +1,14 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
-import { clientViews, rosterStats } from "../../lib/selectors";
+import { clientViews, rosterStats, segmentsOf } from "../../lib/selectors";
 import { Reminders, Sessions, Users } from "../../lib/db";
 import { fmtDateTime, relative } from "../../lib/format";
 import type { IconName } from "../../components/Icon";
 import { PageHeader } from "../../components/Shell";
 import { AiBadge, Button, Card, CardHeader, EmptyState, Icon, LinkArrow, Stat } from "../../components/ui";
 import { ClientCard } from "../../components/ClientCard";
+import { ActivityFeedCard, CoachingTipCard, QuickActionsCard, ThisWeekCard, TopMoversCard } from "../../components/SideWidgets";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -58,94 +59,124 @@ export default function Dashboard() {
         <Stat label="Need coaching" value={stats.needsWork} sub="scored below 60" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        {/* Morning briefing */}
-        <Card className="lg:col-span-2">
-          <CardHeader title="Morning briefing" icon="sparkle" action={<AiBadge />} />
-          <div className="divide-y divide-line">
-            {briefing.length === 0 && (
-              <p className="px-5 py-10 text-center text-sm text-muted">
-                All clear. Add a client to get started.
-              </p>
-            )}
-            {briefing.map((b, i) => (
-              <div key={i} className="flex items-start gap-3.5 px-5 py-3.5">
-                <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${TONE_BG[b.tone]}`}>
-                  <Icon name={b.icon} size={15} />
-                </span>
-                <div className="flex-1 text-sm">
-                  <p className="leading-relaxed text-ink-800">{b.text}</p>
-                  {b.clientId && (
-                    <Link
-                      to={`/advisor/clients/${b.clientId}`}
-                      className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-steel-600 hover:text-steel-700"
-                    >
-                      View {b.clientName}
-                      <Icon name="arrowRight" size={12} />
-                    </Link>
-                  )}
-                </div>
+      {/* Daily overview — progress monitoring at a glance */}
+      <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {(() => {
+          const DAY = 86400000;
+          const now = Date.now();
+          const glance = [
+            { label: "New candidates", n: views.filter((v) => now - v.user.createdAt <= 7 * DAY).length, sub: "joined this week", to: "/advisor/clients", tone: "steel" as const },
+            { label: "Needs attention", n: views.filter((v) => { const s = segmentsOf(v); return s.includes("struggling") || s.includes("inactive") || v.user.readinessStatus === "not_ready"; }).length, sub: "struggling / inactive", to: "/advisor/clients", tone: "clay" as const },
+            { label: "High performers", n: views.filter((v) => segmentsOf(v).includes("referral-ready")).length, sub: "referral-ready", to: "/advisor/referrals", tone: "sage" as const },
+            { label: "Follow-up tasks", n: stats.openReminders + stats.upcomingSessions, sub: "reminders + sessions", to: "/advisor/schedule", tone: "gold" as const },
+          ];
+          const dot: Record<string, string> = { steel: "bg-steel-500", clay: "bg-clay-500", sage: "bg-sage-500", gold: "bg-gold-500" };
+          return glance.map((g) => (
+            <Link key={g.label} to={g.to} className="group rounded-2xl border border-line bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(20,22,30,0.04)] transition hover:border-line-strong hover:shadow-md">
+              <div className="flex items-center gap-2">
+                <span className={`h-1.5 w-1.5 rounded-full ${dot[g.tone]}`} />
+                <p className="text-[12px] font-medium text-muted">{g.label}</p>
               </div>
-            ))}
-          </div>
-        </Card>
-
-        {/* Follow-up reminders */}
-        <Card>
-          <CardHeader title="Follow-ups" icon="bell" />
-          <div className="p-2.5">
-            {reminders.length === 0 && (
-              <p className="px-2 py-8 text-center text-sm text-muted">No reminders.</p>
-            )}
-            {reminders.map((r) => {
-              const client = Users.byId(r.clientId);
-              const overdue = !r.done && r.dueAt < Date.now();
-              return (
-                <label key={r.id} className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-paper-2">
-                  <input
-                    type="checkbox"
-                    checked={r.done}
-                    onChange={(e) => toggleReminder(r.id, e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-line-strong text-steel-500 focus:ring-steel-200"
-                  />
-                  <span className="flex-1 text-sm">
-                    <span className={r.done ? "text-muted line-through" : "text-ink-800"}>{r.text}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                      {client && <span className="text-muted">{client.name}</span>}
-                      {r.source === "ai" && <AiBadge />}
-                      <span className={overdue ? "font-semibold text-clay-500" : "text-muted"}>{relative(r.dueAt)}</span>
-                    </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </Card>
-      </div>
-
-      {/* Roster */}
-      <div className="mt-8 mb-3 flex items-center justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Client readiness</h2>
-        <LinkArrow to="/advisor/clients">View all clients</LinkArrow>
-      </div>
-
-      {views.length === 0 ? (
-        <EmptyState
-          title="No clients yet"
-          body="Create a client account to give a job seeker access and start tracking readiness."
-          action={
-            <Link to="/advisor/clients">
-              <Button icon="plus">Add your first client</Button>
+              <p className="mt-1.5 text-[28px] font-semibold leading-none tnum text-ink-900">{g.n}</p>
+              <p className="mt-1.5 flex items-center gap-1 text-xs text-muted">
+                {g.sub}
+                <Icon name="arrowRight" size={12} className="opacity-0 transition group-hover:opacity-100" />
+              </p>
             </Link>
-          }
-        />
-      ) : (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          {views.slice(0, 3).map((v, i) => (
-            <ClientCard key={v.user.id} view={v} index={i} />
-          ))}
+          ));
+        })()}
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        {/* Main column */}
+        <div className="space-y-6 lg:col-span-2">
+          <Card>
+            <CardHeader title="Morning briefing" icon="sparkle" action={<AiBadge />} />
+            <div className="divide-y divide-line">
+              {briefing.length === 0 && (
+                <p className="px-5 py-10 text-center text-sm text-muted">All clear. Add a client to get started.</p>
+              )}
+              {briefing.map((b, i) => (
+                <div key={i} className="flex items-start gap-3.5 px-5 py-3.5">
+                  <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${TONE_BG[b.tone]}`}>
+                    <Icon name={b.icon} size={15} />
+                  </span>
+                  <div className="flex-1 text-sm">
+                    <p className="leading-relaxed text-ink-800">{b.text}</p>
+                    {b.clientId && (
+                      <Link to={`/advisor/clients/${b.clientId}`} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-steel-600 hover:text-steel-700">
+                        View {b.clientName}
+                        <Icon name="arrowRight" size={12} />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Roster */}
+          <div>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">Client readiness</h2>
+              <LinkArrow to="/advisor/clients">View all clients</LinkArrow>
+            </div>
+            {views.length === 0 ? (
+              <EmptyState
+                title="No clients yet"
+                body="Create a client account to give a job seeker access and start tracking readiness."
+                action={<Link to="/advisor/clients"><Button icon="plus">Add your first client</Button></Link>}
+              />
+            ) : (
+              <div className="grid gap-5 sm:grid-cols-2">
+                {views.slice(0, 4).map((v, i) => (
+                  <ClientCard key={v.user.id} view={v} index={i} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Right rail */}
+        <div className="space-y-6">
+          <ThisWeekCard advisorId={advisorId} />
+
+          {/* Follow-up reminders */}
+          <Card>
+            <CardHeader title="Follow-ups" icon="bell" />
+            <div className="p-2.5">
+              {reminders.length === 0 && <p className="px-2 py-8 text-center text-sm text-muted">No reminders.</p>}
+              {reminders.map((r) => {
+                const client = Users.byId(r.clientId);
+                const overdue = !r.done && r.dueAt < Date.now();
+                return (
+                  <label key={r.id} className="flex cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-2 hover:bg-paper-2">
+                    <input
+                      type="checkbox"
+                      checked={r.done}
+                      onChange={(e) => toggleReminder(r.id, e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-line-strong text-steel-500 focus:ring-steel-200"
+                    />
+                    <span className="flex-1 text-sm">
+                      <span className={r.done ? "text-muted line-through" : "text-ink-800"}>{r.text}</span>
+                      <span className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                        {client && <span className="text-muted">{client.name}</span>}
+                        {r.source === "ai" && <AiBadge />}
+                        <span className={overdue ? "font-semibold text-clay-500" : "text-muted"}>{relative(r.dueAt)}</span>
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </Card>
+
+          <TopMoversCard advisorId={advisorId} />
+          <ActivityFeedCard advisorId={advisorId} />
+          <QuickActionsCard />
+          <CoachingTipCard />
+        </div>
+      </div>
     </div>
   );
 }

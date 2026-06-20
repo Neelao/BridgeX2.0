@@ -14,6 +14,7 @@ import AdvisorDashboard from "./pages/advisor/Dashboard";
 import AdvisorClients from "./pages/advisor/Clients";
 import AdvisorClientDetail from "./pages/advisor/ClientDetail";
 import AdvisorResume from "./pages/advisor/ResumeWorkspace";
+import AdvisorReferrals from "./pages/advisor/Referrals";
 import AdvisorSchedule from "./pages/advisor/Schedule";
 
 import ClientHome from "./pages/client/Home";
@@ -25,6 +26,7 @@ import ClientAdvisor from "./pages/client/Advisor";
 const ADVISOR_NAV: { to: string; label: string; icon: IconName }[] = [
   { to: "/advisor", label: "Dashboard", icon: "dashboard" },
   { to: "/advisor/clients", label: "Clients", icon: "users" },
+  { to: "/advisor/referrals", label: "Referrals", icon: "briefcase" },
   { to: "/advisor/schedule", label: "Schedule", icon: "calendar" },
 ];
 
@@ -61,6 +63,7 @@ export default function App() {
                 <Route path="clients" element={<AdvisorClients />} />
                 <Route path="clients/:clientId" element={<AdvisorClientDetail />} />
                 <Route path="clients/:clientId/resume" element={<AdvisorResume />} />
+                <Route path="referrals" element={<AdvisorReferrals />} />
                 <Route path="schedule" element={<AdvisorSchedule />} />
                 <Route path="*" element={<Navigate to="/advisor" replace />} />
               </Routes>
