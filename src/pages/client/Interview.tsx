@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useScribe } from "@elevenlabs/react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { Companies, Interviews, Profiles, uid } from "../../lib/db";
@@ -37,9 +36,7 @@ export default function InterviewPage() {
   const [camError, setCamError] = useState(false);
   const [micError, setMicError] = useState(false);
   const [micStatusText, setMicStatusText] = useState("");
-  const [voiceStatusText, setVoiceStatusText] = useState("");
   const [userSpeaking, setUserSpeaking] = useState(false);
-  const [useElevenLabs, setUseElevenLabs] = useState(false);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [expression, setExpression] = useState("neutral");
 
@@ -54,30 +51,29 @@ export default function InterviewPage() {
   const startedAt = useRef(Date.now());
   const messagesRef = useRef<ChatMessage[]>([]);
   const endedRef = useRef(false);
-  const elevenAnswerRef = useRef("");
-  const aiAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  const scribe = useScribe({
-    modelId: "scribe_v2_realtime",
-    onPartialTranscript: (data) => {
-      const text = data.text ?? "";
-      setLiveTranscript(`${elevenAnswerRef.current} ${text}`.trim());
-      setUserSpeaking(Boolean(text.trim()));
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => setUserSpeaking(false), 1500);
-    },
-    onCommittedTranscript: (data) => {
-      const text = data.text?.trim();
-      if (!text) return;
-      elevenAnswerRef.current = `${elevenAnswerRef.current} ${text}`.trim();
-      setLiveTranscript(elevenAnswerRef.current);
-      setUserSpeaking(true);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => setUserSpeaking(false), 1500);
-    },
-  });
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  /* Pick a male English voice for the AI interviewer (voices load async). */
+  useEffect(() => {
+    if (!synth) return;
+    const pick = () => {
+      const voices = synth.getVoices();
+      if (!voices.length) return;
+      const en = voices.filter((v) => v.lang?.toLowerCase().startsWith("en"));
+      const pool = en.length ? en : voices;
+      voiceRef.current =
+        pool.find((v) => /\bmale\b/i.test(v.name)) ??
+        pool.find((v) => /\b(daniel|david|alex|fred|george|james|mark|guy|aaron|arthur|rishi|oliver|thomas)\b/i.test(v.name)) ??
+        pool.find((v) => /google (uk|us) english/i.test(v.name)) ??
+        pool[0] ??
+        null;
+    };
+    pick();
+    synth.addEventListener("voiceschanged", pick);
+    return () => synth.removeEventListener("voiceschanged", pick);
+  }, []);
 
   useEffect(() => {
     if (phase !== "call") return;
@@ -107,8 +103,8 @@ export default function InterviewPage() {
 
   /* ── request camera and microphone up front, but independently. If the mic
      permission fails, the user's camera should still appear in the call. The
-     mic track is released immediately; ElevenLabs opens the live mic again only
-     when it is the user's turn to answer. ── */
+     mic track is released immediately; speech recognition opens the live mic
+     again only when it is the user's turn to answer. ── */
   async function startDevices() {
     try {
       const stream = await Promise.race([
@@ -146,91 +142,29 @@ export default function InterviewPage() {
     streamRef.current = null;
   }
 
-  function speakWithBrowserVoice(text: string): Promise<void> {
+  /* ── TTS: the AI interviewer speaks with a browser male voice ── */
+  function speak(text: string): Promise<void> {
     if (!synth) return Promise.resolve();
     synth.cancel();
     return new Promise((resolve) => {
       const utt = new SpeechSynthesisUtterance(text);
+      if (voiceRef.current) utt.voice = voiceRef.current;
+      utt.pitch = 0.9;
+      utt.rate = 1.0;
       utt.onend = () => resolve();
       utt.onerror = () => resolve();
       synth!.speak(utt);
     });
   }
 
-  async function speak(text: string): Promise<void> {
-    try {
-      setVoiceStatusText("");
-      aiAudioRef.current?.pause();
-      aiAudioRef.current = null;
-      const response = await fetch("/api/elevenlabs/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error ?? "ElevenLabs voice failed");
-      }
-
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      aiAudioRef.current = audio;
-
-      await new Promise<void>((resolve) => {
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-          resolve();
-        };
-        audio.onerror = () => {
-          URL.revokeObjectURL(audioUrl);
-          resolve();
-        };
-        audio.play().catch(() => resolve());
-      });
-    } catch (error) {
-      setVoiceStatusText(error instanceof Error ? error.message : "ElevenLabs voice failed");
-      await speakWithBrowserVoice(text);
-    }
-  }
-
-  /* ── STT: continuous — resolved on "Submit answer" click or silence ── */
-  async function fetchElevenLabsToken() {
-    const response = await fetch("/api/elevenlabs/scribe-token");
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? "ElevenLabs token request failed");
-    return typeof data === "string" ? data : data.token ?? data.value ?? data.single_use_token;
-  }
-
+  /* ── STT: browser SpeechRecognition — resolved on "Submit answer" or silence ── */
   function startListening(): Promise<string> {
     accumulatedRef.current = "";
-    elevenAnswerRef.current = "";
     setLiveTranscript("");
     setUserSpeaking(false);
 
-    return new Promise<string>(async (resolve) => {
+    return new Promise<string>((resolve) => {
       resolveListenRef.current = resolve;
-      try {
-        const token = await fetchElevenLabsToken();
-        if (token) {
-          setUseElevenLabs(true);
-          setMicError(false);
-          setMicStatusText("Opening microphone...");
-          await scribe.connect({
-            token,
-            microphone: {
-              echoCancellation: true,
-              noiseSuppression: true,
-            },
-          });
-          setMicStatusText("");
-          return;
-        }
-      } catch (error) {
-        setUseElevenLabs(false);
-        setMicStatusText(error instanceof Error ? error.message : "ElevenLabs microphone connection failed.");
-      }
-
       if (!SpeechRecognitionCtor) { resolve(""); return; }
 
       const finish = () => {
@@ -304,17 +238,6 @@ export default function InterviewPage() {
   }
 
   function submitAnswer() {
-    if (useElevenLabs && scribe.isConnected) {
-      const answer = elevenAnswerRef.current.trim() || liveTranscript.trim();
-      scribe.disconnect();
-      setUserSpeaking(false);
-      if (resolveListenRef.current) {
-        resolveListenRef.current(answer);
-        resolveListenRef.current = null;
-      }
-      return;
-    }
-
     recognizerRef.current?.stop();
     /* .stop() should fire onend shortly after, but if the recognizer/device is in a bad
        state it can simply never fire — force the turn to move on instead of staying stuck */
@@ -389,9 +312,7 @@ export default function InterviewPage() {
   async function endInterview() {
     endedRef.current = true;
     synth?.cancel();
-    aiAudioRef.current?.pause();
     recognizerRef.current?.stop();
-    if (scribe.isConnected) scribe.disconnect();
     resolveListenRef.current?.("");
     resolveListenRef.current = null;
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -418,9 +339,7 @@ export default function InterviewPage() {
     return () => {
       endedRef.current = true;
       synth?.cancel();
-      aiAudioRef.current?.pause();
       recognizerRef.current?.stop();
-      if (scribe.isConnected) scribe.disconnect();
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       stopCamera();
     };
@@ -612,12 +531,6 @@ export default function InterviewPage() {
             <div className="absolute right-4 top-4 flex items-center gap-2 rounded-full bg-steel-600/80 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
               Speaking
-            </div>
-          )}
-
-          {voiceStatusText && (
-            <div className="absolute right-4 top-14 max-w-sm rounded-xl bg-black/70 px-4 py-3 text-xs font-medium leading-relaxed text-white/80 backdrop-blur">
-              ElevenLabs voice fallback: {voiceStatusText}
             </div>
           )}
 
