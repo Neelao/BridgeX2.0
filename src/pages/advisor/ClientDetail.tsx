@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useStore } from "../../lib/useStore";
-import { Companies, Interviews, Notes, Profiles, Reminders, Resumes, Sessions, Users, uid } from "../../lib/db";
+import { Companies, Interviews, Messages, Notes, Profiles, Reminders, Resumes, Sessions, Users, uid } from "../../lib/db";
 import { aiDelay, candidateSummary, summarizeCompany } from "../../lib/ai";
 import { fmtDate, fmtDateTime, relative, READINESS_META } from "../../lib/format";
 import type { NoteKind, ReadinessStatus, TargetCompany, User } from "../../lib/types";
@@ -39,6 +39,7 @@ export default function ClientDetail() {
   const sessions = useStore(() => Sessions.forClient(clientId).filter((s) => s.status === "scheduled"), [clientId]);
   const notes = useStore(() => Notes.forClient(clientId), [clientId]);
   const resume = useStore(() => Resumes.forClient(clientId), [clientId]);
+  const conversation = useStore(() => Messages.forConversation(advisorId, clientId), [advisorId, clientId]);
 
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [companyOpen, setCompanyOpen] = useState(false);
@@ -296,6 +297,9 @@ export default function ClientDetail() {
             </div>
           </Card>
 
+          {/* Direct messages */}
+          <MessagesCard advisorId={advisorId} clientId={clientId} clientName={client.name} conversation={conversation} />
+
           {/* Coaching notes */}
           <NotesCard advisorId={advisorId} clientId={clientId} notes={notes} />
 
@@ -495,6 +499,74 @@ function NotesCard({ advisorId, clientId, notes }: { advisorId: string; clientId
               </div>
             ))
           )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function MessagesCard({
+  advisorId,
+  clientId,
+  clientName,
+  conversation,
+}: {
+  advisorId: string;
+  clientId: string;
+  clientName: string;
+  conversation: ReturnType<typeof Messages.forConversation>;
+}) {
+  const [text, setText] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [conversation]);
+
+  function send() {
+    const t = text.trim();
+    if (!t) return;
+    Messages.add({ id: uid("msg"), advisorId, clientId, fromRole: "advisor", text: t, at: Date.now() });
+    Users.touchContact(clientId);
+    setText("");
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Messages" icon="send" />
+      <div
+        ref={scrollRef}
+        className="scroll-thin max-h-48 space-y-3 overflow-y-auto p-4"
+      >
+        {conversation.length === 0 ? (
+          <p className="py-2 text-center text-xs text-muted">No messages yet.</p>
+        ) : (
+          conversation.map((m) => (
+            <div key={m.id} className={`flex gap-2 ${m.fromRole === "advisor" ? "flex-row-reverse" : ""}`}>
+              <div
+                className={`max-w-[85%] rounded-xl px-3 py-2 text-xs leading-relaxed ${
+                  m.fromRole === "advisor"
+                    ? "rounded-tr-sm bg-steel-500 text-white"
+                    : "rounded-tl-sm bg-paper-2 text-ink-800"
+                }`}
+              >
+                {m.text}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      <div className="border-t border-line p-3">
+        <div className="flex items-end gap-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            rows={2}
+            placeholder={`Message ${clientName}…`}
+            className="scroll-thin flex-1 resize-none rounded-lg border border-line-strong px-3 py-2 text-sm outline-none transition placeholder:text-muted/70 focus:border-steel-400 focus:ring-2 focus:ring-steel-100"
+          />
+          <Button size="sm" icon="send" onClick={send} disabled={!text.trim()}>Send</Button>
         </div>
       </div>
     </Card>
